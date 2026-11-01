@@ -14,7 +14,7 @@ import io
 # Web Sayfası Tasarımı
 st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
 
-# --- VERİBATANI (JSON) FONKSİYONLARI ---
+# --- VERİBATANI (JSON) FONKSiyonLARI ---
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
 
 def veritabani_yukle():
@@ -149,7 +149,8 @@ st.divider()
 if secilen_eski_ozet:
     st.info("📂 **Geçmiş Özet Görüntüleniyor**")
     ozeti_ekrana_yazdir(secilen_eski_ozet['tarih'], secilen_eski_ozet['saat'], secilen_eski_ozet['metin'], secilen_eski_ozet['ozet'])
-    if st.button("➕ Yeni Özet Oluşturma Ekranına Dön"): st.rerun()
+    if st.button("➕ Yeni Özet Oluşturma Ekranına Dön"): 
+        st.rerun()
 
 else:
     sekme1, sekme2 = st.tabs(["📺 YouTube Videosu Özetle", "📝 Uzun Metin/Yazı Özetle"])
@@ -170,7 +171,6 @@ else:
                     st.info(f"🔍 Sistem: Video Kodu '{video_id}' başarıyla doğrulandı. Çerez korumalı altyazı motoru başlatılıyor...")
                     metin_to_process = ""
                     
-                    # Dinamik dosya yolu tanımı (Sizin belirttiğiniz dosya adı ile güncellendi)
                     PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
                     CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
                     
@@ -179,23 +179,17 @@ else:
                             st.error(f"⚠️ Kritik Hata: Klasörde 'www.youtube.com_cookies.txt' dosyası bulunamadı! Lütfen bu dosyanın '{PROJE_DIZINI}' dizininde olduğundan emin olun.")
                         else:
                             try:
-                                # 1. ADIM: Çerez kullanarak videonun altyazı listesini çek
                                 altyazi_listesi = YouTubeTranscriptApi.list_transcripts(video_id, cookies=CEREZ_YOLU)
-                                
-                                # 2. ADIM: Türkçe veya İngilizce altyazıyı önceliklendir (manuel veya otomatik fark etmez)
                                 try:
                                     altyazi = altyazi_listesi.find_transcript(['tr', 'en'])
                                 except:
-                                    # Eğer doğrudan bulunamazsa mevcut ilk altyazıyı Türkçe'ye otomatik çevir
                                     altyazi = altyazi_listesi.find_transcript([]).translate('tr')
                                 
-                                # 3. ADIM: Veriyi çek ve metne dönüştür
                                 konusma_verisi = altyazi.fetch()
                                 metin_to_process = " ".join([parca['text'] for parca in konusma_verisi])
                             except Exception as e:
                                 st.error(f"Altyazı API Hatası: {str(e)}")
 
-                    # İşleme adımı ve ekrana yazdırma
                     if metin_to_process:
                         simdi = datetime.now()
                         tarih = simdi.strftime("%d.%m.%Y")
@@ -221,3 +215,16 @@ else:
         
         if st.button("Metni Analiz Et ve Özetle", key="text_btn"):
             if not girilen_metin.strip():
+                st.warning("Lütfen boş bir metin bırakmayın!")
+            else:
+                simdi = datetime.now()
+                tarih = simdi.strftime("%d.%m.%Y")
+                saat = simdi.strftime("%H:%M:%S")
+                
+                with st.spinner("🤖 Metin analiz ediliyor ve önemli noktalar çıkartılıyor..."):
+                    ozet_sonuc = akilli_yerel_ozetleyici(girilen_metin)
+                    
+                    yeni_kayit = {
+                        "tarih": tarih,
+                        "saat": saat,
+                        "metin": girilen_metin,
