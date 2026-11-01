@@ -4,7 +4,7 @@ import os
 import re
 import urllib.request
 import urllib.parse
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree
 from datetime import datetime
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -18,20 +18,22 @@ GUNLUK_UCRETSIZ_LIMIT = 10
 def veritabani_yukle():
     try:
         if os.path.exists(VERITABANI_DOSYASI):
-            with open(VERITABANI_DOSYASI, "r", encoding="utf-8") as f:
-                veri = json.load(f)
-                if isinstance(veri, list):
-                    return {"gecmis": veri, "kota": {}}
-                if isinstance(veri, dict) and "gecmis" in veri:
-                    return veri
+            f = open(VERITABANI_DOSYASI, "r", encoding="utf-8")
+            veri = json.load(f)
+            f.close()
+            if isinstance(veri, list):
+                return {"gecmis": veri, "kota": {}}
+            if isinstance(veri, dict) and "gecmis" in veri:
+                return veri
     except:
         pass
     return {"gecmis": [], "kota": {}}
 
 def veritabani_kaydet(veri):
     try:
-        with open(VERITABANI_DOSYASI, "w", encoding="utf-8") as f:
-            json.dump(veri, f, ensure_ascii=False, indent=4)
+        f = open(VERITABANI_DOSYASI, "w", encoding="utf-8")
+        json.dump(veri, f, ensure_ascii=False, indent=4)
+        f.close()
     except:
         pass
 
@@ -134,18 +136,20 @@ def saf_html_altyazi_kaziyici(video_id):
     try:
         url = f"https://youtube.com{video_id}"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
-        with urllib.request.urlopen(req, timeout=15) as response:
-            html = response.read().decode('utf-8')
+        response = urllib.request.urlopen(req, timeout=15)
+        html = response.read().decode('utf-8')
+        response.close()
         match = re.search(r'"captionTracks":\s*(\[.*?\])', html)
         if match:
             tracks = json.loads(match.group(1))
-            track = next((t for t in tracks if t.get('languageCode') in ['tr', 'en']), tracks[0])
+            track = next((t for t in tracks if t.get('languageCode') in ['tr', 'en']), tracks)
             base_url = track.get('baseUrl')
             if base_url:
                 req_sub = urllib.request.Request(base_url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req_sub, timeout=10) as sub_res:
-                    xml_data = sub_res.read().decode('utf-8')
-                root = ET.fromstring(xml_data)
+                sub_res = urllib.request.urlopen(req_sub, timeout=10)
+                xml_data = sub_res.read().decode('utf-8')
+                sub_res.close()
+                root = xml.etree.ElementTree.fromstring(xml_data)
                 metin_parcalari = [text.text for text in root.findall('.//text') if text.text]
                 if metin_parcalari:
                     return " ".join(metin_parcalari), track.get('languageCode', 'tr')
@@ -180,7 +184,9 @@ def akilli_altyazi_indirici(video_id, cerez_yolu):
                 bulunan_dosya = dosya; break
         if bulunan_dosya and os.path.exists(bulunan_dosya):
             indirilen_dil = "en" if ".en" in bulunan_dosya.lower() else "tr"
-            with open(bulunan_dosya, "r", encoding="utf-8") as f: icerik = f.read()
+            f = open(bulunan_dosya, "r", encoding="utf-8")
+            icerik = f.read()
+            f.close()
             lines = icerik.split("\n")
             temiz_satirlar = []
             for line in lines:
@@ -218,7 +224,7 @@ st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
-# Hataları sıfırlayan Sekme (Tab) Sistemi
+# Tam Güvenlikli Sekme Sistemi
 sekme1, sekme2 = st.tabs(["📺 YouTube Videosu", "📝 Uzun Metin"])
 
 with sekme1:
@@ -234,4 +240,3 @@ with sekme1:
                 v_id = youtube_id_bul_kesin(video_linki)
                 PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
                 CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
-                with st.spinner("📥 Koruma duvarları aşılıyor, altyazılar sökülüyor..."):
