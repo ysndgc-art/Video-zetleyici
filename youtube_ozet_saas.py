@@ -133,11 +133,17 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
         'writeautomaticsub': True,
         'subtitleslangs': ['tr', 'en', 'auto', 'tr-orig', 'en-orig', '.*'],
         'skip_download': True,
-        'cookiefile': cerez_yolu,
+        'cookiefile': cerez_yolu if os.path.exists(cerez_yolu) else None,
         'outtmpl': f"sub_{safe_id}",
         'quiet': True,
         'no_warnings': True,
-        'ie_key': 'Youtube'
+        'ie_key': 'Youtube',
+        # Güvenlik ve Donma Önleme Parametreleri
+        'socket_timeout': 15,          # 15 saniyede sunucu yanıt vermezse işlemi iptal et
+        'retries': 2,                  # En fazla 2 kez tekrar dene
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -212,7 +218,7 @@ if mod == "📺 YouTube Videosu":
                     metin, altyazi_dili = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
                     
                 if not metin:
-                    st.error("Altyazı bulunamadı veya indirilemedi.")
+                    st.error("YouTube sunucularından altyazı çekilemedi. Video gizli olabilir veya altyazı içermiyor olabilir.")
                 else:
                     with st.spinner("🤖 Yapay zeka maddeleri çıkarıyor..."):
                         ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil=altyazi_dili)
@@ -233,16 +239,3 @@ if mod == "📝 Uzun Metin":
                 ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti, dil="tr")
                 ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler]
             simdi = datetime.now()
-            veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": girilen_metin, "ozet": ozet_maddeleri}
-            gecmis_ekle(veri_paketi)
-            st.session_state["aktif_ozet"] = veri_paketi
-            st.rerun()
-
-# --- SONUÇ ALANI ---
-if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not None:
-    st.divider()
-    st.info("📂 **Analiz Sonucu**")
-    g = st.session_state["aktif_ozet"]
-    for m in g.get('ozet', []):
-        st.write(m)
-    
