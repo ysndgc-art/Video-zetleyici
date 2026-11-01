@@ -3,6 +3,8 @@ import json
 import os
 import re
 from datetime import datetime
+import urllib.request
+import urllib.parse
 import yt_dlp
 
 # --- SAYFA YAPILANDIRMASI ---
@@ -34,6 +36,21 @@ def youtube_id_bul_kesin(link):
             if parca.lower() not in ["youtube", "youtu", "watch", "embed"]:
                 return parca
     return girdi
+
+# --- 🌐 GÜVENLİ VE HAFİF ARKA PLAN ÇEVİRİ MOTORU ---
+def arka_plan_google_cevirisi(metin, hedef_dil="tr"):
+    try:
+        # Harici kütüphane kullanmadan, kilitleme yapmayan saf HTTP isteği
+        metin_kodlu = urllib.parse.quote(metin)
+        url = f"https://googleapis.com{hedef_dil}&dt=t&q={metin_kodlu}"
+        istek = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(istek, timeout=5) as response:
+            ham_veri = response.read().decode('utf-8')
+            veri = json.loads(ham_veri)
+            # Google'ın döndürdüğü ham matrisi düzgünce birleştirme
+            return "".join([parca[0] for parca in veri[0] if parca[0]])
+    except Exception:
+        return metin # Hata durumunda koruma amaçlı orijinal metni döndür
 
 # --- 🧠 ÇOK DİLLİ GELİŞMİŞ YEREL ANALİZ MOTORU ---
 def yerel_mantik_ozetleyici(metin, dil="tr"):
@@ -93,10 +110,19 @@ def yerel_mantik_ozetleyici(metin, dil="tr"):
     for idx in en_iyi_indeksler:
         ham_cumle = cumleler[idx].strip()
         if ham_cumle:
-            ham_cumle = ham_cumle.upper() + ham_cumle[1:]
-            if not ham_cumle.endswith("."):
-                ham_cumle += "."
-            sonuc.append(ham_cumle)
+            # Yapışık gelen tekrarlı büyük/küçük harf sorununu çözen Regex temizliği
+            yarisi = len(ham_cumle) // 2
+            sol = ham_cumle[:yarisi].strip().lower()
+            sag = ham_cumle[yarisi:].strip().lower()
+            if sol[:15] == sag[:15]:
+                ham_cumle = ham_cumle[:yarisi].strip()
+            
+            ham_cumle = ham_cumle.strip()
+            if ham_cumle:
+                ham_cumle = ham_cumle[0].upper() + ham_cumle[1:]
+                if not ham_cumle.endswith("."):
+                    ham_cumle += "."
+                sonuc.append(ham_cumle)
             
     return sonuc
 
@@ -161,8 +187,17 @@ def youtube_modu_calistir():
             
         with st.spinner("🤖 2. Adım: Kritik noktalar hesaplanıyor..."):
             ham_maddeler = yerel_mantik_ozetleyici(metin, dil=altyazi_dili)
+            
             emojiler = ["📌", "📊", "💡", "⚙️", "🎯"]
-            ozet_maddeleri = [f"{emojiler[i % 5]} {m}" for i, m in enumerate(ham_maddeler)]
+            ozet_maddeleri = []
+            
+            for i, madde in enumerate(ham_maddeler):
+                if altyazi_dili == "en":
+                    # Kilitlenme yapmayan güvenli çeviri
+                    turkce_madde = arka_plan_google_cevirisi(madde, "tr")
+                    ozet_maddeleri.append(f"{emojiler[i % 5]} {turkce_madde}")
+                else:
+                    ozet_maddeleri.append(f"{emojiler[i % 5]} {madde}")
             
         simdi = datetime.now()
         veritabani_kaydet({"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri})
@@ -211,21 +246,9 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
 
 # --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
-st.write("Döngü Kilitlenmeleri Temizlenmiş %100 Kararlı Sürüm")
+st.write("Kilitlenmeyen Güvenli Arka Plan Çeviri Sistemi Aktif")
 st.divider()
 
 if "aktif_ozet" in st.session_state:
     st.info("📂 **Geçmiş Özet Görüntüleniyor**")
     g = st.session_state["aktif_ozet"]
-    st.success(f"✅ Analiz Tarihi: {g['tarih']} - {g['saat']}")
-    st.subheader("📊 Çıkarılan Kritik Maddeler:")
-    for m in g['ozet']: st.write(m)
-    if st.button("➕ Yeni Özet Ekranına Dön"):
-        del st.session_state["aktif_ozet"]
-        st.rerun()
-else:
-    mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
-    if mod == "📺 YouTube Videosu":
-        youtube_modu_calistir()
-    if mod == "📝 Uzun Metin":
-        metin_modu_calistir()
