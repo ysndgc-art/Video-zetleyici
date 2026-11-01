@@ -15,13 +15,11 @@ import google.generativeai as genai
 # Web Sayfası Tasarımı
 st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
 
-# --- 🧠 GÜVENLİ API ANAHTARI BAĞLANTISI ---
-try:
+# --- 🧠 AKILLI API AYARI ---
+# Eğer kasada şifre bulamazsa kullanıcıdan arayüzde girmesini isteyecek esnek yapı
+GEMINI_API_KEY = ""
+if "GEMINI_API_KEY" in st.secrets:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-    # v1beta yerine en kararlı ve güncel üretim sürümü olan v1 API'sini zorluyoruz
-    genai.configure(api_key=GEMINI_API_KEY, client_options={"api_version": "v1"})
-except Exception as e:
-    st.error("🔑 API Anahtarı bulunamadı!")
 
 # --- VERİTABANI (JSON) FONKSİYONLARI ---
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
@@ -52,14 +50,19 @@ def youtube_id_bul_kesin(link_veya_id):
     return None
 
 # --- 🔥 GERÇEK YAPAY ZEKA ÖZET MOTORU ---
-def gemini_ile_ozetle(girdi_metni):
+def gemini_ile_ozetle(girdi_metni, api_key_input):
     try:
-        # En güncel ve sorunsuz çalışan kararlı üretim modelini çağırıyoruz
+        # Hangi anahtar aktifse onu sisteme tanıt ve kararlı v1 sürümünü zorla
+        aktif_key = api_key_input if api_key_input else GEMINI_API_KEY
+        if not aktif_key:
+            return ["❌ Hata: Sistemde aktif bir Gemini API anahtarı bulunamadı. Lütfen sol taraftaki kutuya anahtarınızı girin."]
+            
+        genai.configure(api_key=aktif_key, client_options={"api_version": "v1"})
         model = genai.GenerativeModel("gemini-1.5-flash-latest")
         
         talimat = (
             "Sana verilen metni veya konuşma dökümünü incele. "
-            "En önemli yerleri cımbızla çekerek tam 5 maddelik, anlaşılır ve şık bir Türkçe özet çıkar. "
+            "En önemli yerleri cımbızla çekerek tam 5 maddelik, basit, anlaşılır ve şık bir Türkçe özet çıkar. "
             "Her maddenin başına ilgili bir emoji koy (Örn: 📌, 📊, 💡, ⚙️, 🎯). "
             "Yanıtında sadece bu 5 madde olsun, başka açıklama yazma."
         )
@@ -69,8 +72,9 @@ def gemini_ile_ozetle(girdi_metni):
     except Exception as e:
         return [
             f"❌ Yapay Zeka Bağlantı Hatası: {e}",
-            "⚠️ Lütfen Streamlit Cloud ayarlarından şifrenizi doğru girdiğinize emin olun."
+            "⚠️ Not: Eğer 403 veya yetki hatası alıyorsanız, kopyaladığınız API anahtarının başında veya sonunda boşluk kalmadığından emin olun."
         ]
+
 def pdf_rapor_uret(tarih, saat, orijinal_metin, ozet_maddeleri):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, title="AI Ozet Raporu")
@@ -104,10 +108,12 @@ def pdf_rapor_uret(tarih, saat, orijinal_metin, ozet_maddeleri):
 
 def ozeti_ekrana_yazdir(tarih, saat, metin, ozet):
     st.divider()
-    st.success(f"✅ İşlem Başarıyla Tamamlandı! ({tarih} - {saat})")
-    
-    pdf_dosyasi = pdf_rapor_uret(tarih, saat, metin, ozet)
-    st.download_button(label="📥 Bu Özeti PDF Olarak İndir", data=pdf_dosyasi, file_name=f"ai_ozet_{saat.replace(':','_')}.pdf", mime="application/pdf")
+    if "❌" in "".join(ozet):
+        st.error("⚠️ İşlem tamamlanamadı, lütfen yukarıdaki hata mesajını inceleyin.")
+    else:
+        st.success(f"✅ İşlem Başarıyla Tamamlandı! ({tarih} - {saat})")
+        pdf_dosyasi = pdf_rapor_uret(tarih, saat, metin, ozet)
+        st.download_button(label="📥 Bu Özeti PDF Olarak İndir", data=pdf_dosyasi, file_name=f"ai_ozet_{saat.replace(':','_')}.pdf", mime="application/pdf")
     
     st.subheader("🤖 Yapay Zeka Tarafından Çıkarılan 5 Madde:")
     for madde in ozet: st.write(madde)
@@ -116,6 +122,11 @@ def ozeti_ekrana_yazdir(tarih, saat, metin, ozet):
     st.caption(metin)
 
 # --- YAN MENÜ (SIDEBAR) ---
+st.sidebar.title("🔑 Sistem Yönetimi")
+# Eğer sunucu kasası çalışmazsa, buradaki kutu can kurtaracak!
+user_api_key = st.sidebar.text_input("Gemini API Key Girişi:", type="password", help="Google AI Studio'dan aldığınız AIzaSy... kodunu buraya yapıştırın.")
+
+st.sidebar.divider()
 st.sidebar.title("📜 Özet Geçmişiniz")
 gecmis_listesi = veritabani_yukle()
 secilen_eski_ozet = None
@@ -162,11 +173,11 @@ else:
                 else:
                     st.info(f"🔍 Sistem: Video Kodu '{video_id}' başarıyla yakalandı.")
                     
-                    with st.spinner("🤖 Yapay zehir içeriği derinlemesine analiz ediyor..."):
+                    with st.spinner("🤖 Yapay zeka içeriği derinlemesine analiz ediyor..."):
                         try:
                             konusma_verisi = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
                             metin_to_process = " ".join([parca['text'] for parca in konusma_verisi])
-                            yapay_zeka_ozeti = gemini_ile_ozetle(metin_to_process)
+                            yapay_zeka_ozeti = gemini_ile_ozetle(metin_to_process, user_api_key)
                         except:
                             st.error("⚠️ Bu videonun altyazı korumasını aşamadık.")
                             st.info("💡 Lütfen videonun altındaki altyazıları kopyalayıp yan taraftaki 'Uzun Metin/Yazı Özetle' sekmesine yapıştırın. Yapay zekamız onu kusursuzca özetleyecektir!")
@@ -187,7 +198,7 @@ else:
                 st.warning("Lütfen metin girin!")
             else:
                 with st.spinner("🤖 Yapay zeka metni analiz ediyor..."):
-                    yapay_zeka_ozeti = gemini_ile_ozetle(uzun_metin)
+                    yapay_zeka_ozeti = gemini_ile_ozetle(uzun_metin, user_api_key)
                 
                 simdi = datetime.now()
                 t_sn = simdi.strftime("%d.%m.%Y")
