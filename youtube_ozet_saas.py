@@ -260,8 +260,12 @@ st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
 st.write("Gelişmiş İstatistik Paneli ve PDF / Markdown / TXT Dışa Aktarma Destekli Sürüm")
 st.divider()
 
+# Güvenli Başlangıç Durumu Tanımlama
+if "aktif_ozet" not in st.session_state:
+    st.session_state["aktif_ozet"] = None
+
 # Blokaj Yapmayan Akıllı Görünüm Kontrolü
-if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
+if st.session_state["aktif_ozet"] is not None:
     st.info("📂 **Geçmiş Analiz Görüntüleniyor**")
     g = st.session_state["aktif_ozet"]
     st.success(f"✅ Analiz Tarihi: {g.get('tarih','')} - {g.get('saat','')}")
