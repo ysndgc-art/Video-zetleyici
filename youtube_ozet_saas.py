@@ -10,16 +10,9 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 import io
-import google.generativeai as genai
 
 # Web Sayfası Tasarımı
 st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
-
-# --- 🧠 AKILLI API AYARI ---
-# Eğer kasada şifre bulamazsa kullanıcıdan arayüzde girmesini isteyecek esnek yapı
-GEMINI_API_KEY = ""
-if "GEMINI_API_KEY" in st.secrets:
-    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 # --- VERİTABANI (JSON) FONKSİYONLARI ---
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
@@ -49,33 +42,46 @@ def youtube_id_bul_kesin(link_veya_id):
                 return parca
     return None
 
-# --- 🔥 GERÇEK YAPAY ZEKA ÖZET MOTORU ---
-def gemini_ile_ozetle(girdi_metni, api_key_input):
-    try:
-        aktif_key = api_key_input if api_key_input else GEMINI_API_KEY
-        if not aktif_key:
-            return ["❌ Hata: Sistemde aktif bir Gemini API anahtarı bulunamadı. Lütfen sol taraftaki kutuya anahtarınızı girin."]
+# --- 🧠 %100 ÜCRETSİZ VE BAĞIMSIZ AKILLI ÖZET MOTORU ---
+def akilli_yerel_ozetleyici(metin):
+    """Metni cümlelere bölüp kelime frekans analiziyle en önemli 5 cümleyi seçer."""
+    # Metni temizle ve cümlelere böl
+    cumleler = re.split(r'(?<=[.!?])\s+', metin.strip())
+    if len(cumleler) <= 5:
+        return [f"📌 {c}" for c in cumleler if c.strip()]
+    
+    # Kelime frekanslarını (sıklıklarını) hesapla
+    kelimeler = re.findall(r'\w+', metin.lower())
+    durma_kelimeleri = {"ve", "veya", "ama", "fakat", "ile", "bir", "bu", "şu", "o", "da", "de", "için", "gibi", "çok", "en", "daha", "olan", "olarak"}
+    frekanslar = {}
+    for k in kelimeler:
+        if k not in durma_kelimeleri and len(k) > 2:
+            frekanslar[k] = frekanslar.get(k, 0) + 1
             
-        # Hatalı olan client_options kısmını tamamen kaldırıp en sade şekilde configure ediyoruz
-        genai.configure(api_key=aktif_key)
+    # Cümleleri puanla
+    cumle_puanlari = {}
+    for idx, cumle in enumerate(cumleler):
+        puan = 0
+        for kelime in re.findall(r'\w+', cumle.lower()):
+            if kelime in frekanslar:
+                puan += frekanslar[kelime]
+        cumle_puanlari[idx] = puan
         
-        # En kararlı ve güncel ana üretim modelini çağırıyoruz
-        model = genai.GenerativeModel("gemini-1.5-flash")
+    # En yüksek puanlı ilk 5 cümleyi orijinal sırasına göre seç
+    en_iyiler = sorted(cumle_puanlari, key=cumle_puanlari.get, reverse=True)[:5]
+    en_iyiler.sort()
+    
+    emojiler = ["📌", "📊", "💡", "⚙️", "🎯"]
+    sonuc_maddeleri = []
+    for i, idx in enumerate(en_iyiler):
+        temiz_cumle = cumleler[idx].strip()
+        # Çok uzun cümleleri kırp
+        if len(temiz_cumle) > 150:
+            temiz_cumle = temiz_cumle[:147] + "..."
+        sonuc_maddeleri.append(f"{emojiler[i]} {temiz_cumle}")
         
-        talimat = (
-            "Sana verilen metni veya konuşma dökümünü incele. "
-            "En önemli yerleri cımbızla çekerek tam 5 maddelik, basit, anlaşılır ve şık bir Türkçe özet çıkar. "
-            "Her maddenin başına ilgili bir emoji koy (Örn: 📌, 📊, 💡, ⚙️, 🎯). "
-            "Yanıtında sadece bu 5 madde olsun, başka açıklama yazma."
-        )
-        cevap = model.generate_content(f"{talimat}\n\nÖzetlenecek Metin:\n{girdi_metni}")
-        maddeler = [satir.strip() for satir in cevap.text.split("\n") if satir.strip()]
-        return maddeler[:5]
-    except Exception as e:
-        return [
-            f"❌ Yapay Zeka Bağlantı Hatası: {e}",
-            "⚠️ Not: Eğer yetki hatası alıyorsanız, kopyaladığınız API anahtarının başında veya sonunda boşluk kalmadığından emin olun."
-        ]
+    return sonuc_maddeleri
+
 def pdf_rapor_uret(tarih, saat, orijinal_metin, ozet_maddeleri):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, title="AI Ozet Raporu")
@@ -89,7 +95,7 @@ def pdf_rapor_uret(tarih, saat, orijinal_metin, ozet_maddeleri):
     hikaye.append(Paragraph("📺 AI VİDEO & METİN ÖZETLEYİCİ RAPORU", baslik_stili))
     hikaye.append(Paragraph(f"Tarih: {tarih} | Saat: {saat}", alt_baslik_stili))
     hikaye.append(Spacer(1, 10))
-    hikaye.append(Paragraph("<b>🤖 Yapay Zeka Özeti (5 Kritik Madde):</b>", stiller['Heading2']))
+    hikaye.append(Paragraph("<b>🤖 Çıkarılan 5 Kritik Madde:</b>", stiller['Heading2']))
     hikaye.append(Spacer(1, 5))
     
     for madde in ozet_maddeleri:
@@ -101,33 +107,27 @@ def pdf_rapor_uret(tarih, saat, orijinal_metin, ozet_maddeleri):
     hikaye.append(Paragraph(orijinal_metin[:500] + "...", stiller['Normal']))
     
     hikaye.append(Spacer(1, 30))
-    hikaye.append(Paragraph("<font size=8 color=gray>Bu rapor bilgilendirme amaçlı yapay zeka tarafından üretilmiştir. AI yanıtları hata içerebilir.</font>", stiller['Normal']))
+    hikaye.append(Paragraph("<font size=8 color=gray>Bu rapor bilgilendirme amaçlı üretilmiştir. Yazılım metin madenciliği algoritması kullanılmıştır.</font>", stiller['Normal']))
     
-    doc.build(hikaye)
+    doc.build(buffer)
     buffer.seek(0)
     return buffer
 
 def ozeti_ekrana_yazdir(tarih, saat, metin, ozet):
     st.divider()
-    if "❌" in "".join(ozet):
-        st.error("⚠️ İşlem tamamlanamadı, lütfen yukarıdaki hata mesajını inceleyin.")
-    else:
-        st.success(f"✅ İşlem Başarıyla Tamamlandı! ({tarih} - {saat})")
-        pdf_dosyasi = pdf_rapor_uret(tarih, saat, metin, ozet)
-        st.download_button(label="📥 Bu Özeti PDF Olarak İndir", data=pdf_dosyasi, file_name=f"ai_ozet_{saat.replace(':','_')}.pdf", mime="application/pdf")
+    st.success(f"✅ İşlem Başarıyla Tamamlandı! ({tarih} - {saat})")
     
-    st.subheader("🤖 Yapay Zeka Tarafından Çıkarılan 5 Madde:")
-    for madde in ozet: st.write(madde)
+    pdf_dosyasi = pdf_rapor_uret(tarih, saat, metin, ozet)
+    st.download_button(label="📥 Bu Özeti PDF Olarak İndir", data=pdf_dosyasi, file_name=f"ozet_{saat.replace(':','_')}.pdf", mime="application/pdf")
+    
+    st.subheader("📊 Analiz Edilen 5 Kritik Madde:")
+    for madde in ozet: 
+        st.write(madde)
         
     st.subheader("📝 Orijinal Kaynak:")
     st.caption(metin)
 
 # --- YAN MENÜ (SIDEBAR) ---
-st.sidebar.title("🔑 Sistem Yönetimi")
-# Eğer sunucu kasası çalışmazsa, buradaki kutu can kurtaracak!
-user_api_key = st.sidebar.text_input("Gemini API Key Girişi:", type="password", help="Google AI Studio'dan aldığınız AIzaSy... kodunu buraya yapıştırın.")
-
-st.sidebar.divider()
 st.sidebar.title("📜 Özet Geçmişiniz")
 gecmis_listesi = veritabani_yukle()
 secilen_eski_ozet = None
@@ -149,7 +149,7 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
 
 # --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
-st.write("Google Gemini Yapay Zeka Motoru ile güçlendirilmiş gerçek MVP sürümü.")
+st.write("Dış platformlara bağımlılığı olmayan, ömür boyu ücretsiz ve kararlı sürüm.")
 st.divider()
 
 if secilen_eski_ozet:
@@ -174,14 +174,14 @@ else:
                 else:
                     st.info(f"🔍 Sistem: Video Kodu '{video_id}' başarıyla yakalandı.")
                     
-                    with st.spinner("🤖 Yapay zeka içeriği derinlemesine analiz ediyor..."):
+                    with st.spinner("İçerik analiz ediliyor..."):
                         try:
                             konusma_verisi = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
                             metin_to_process = " ".join([parca['text'] for parca in konusma_verisi])
-                            yapay_zeka_ozeti = gemini_ile_ozetle(metin_to_process, user_api_key)
+                            yapay_zeka_ozeti = akilli_yerel_ozetleyici(metin_to_process)
                         except:
-                            st.error("⚠️ Bu videonun altyazı korumasını aşamadık.")
-                            st.info("💡 Lütfen videonun altındaki altyazıları kopyalayıp yan taraftaki 'Uzun Metin/Yazı Özetle' sekmesine yapıştırın. Yapay zekamız onu kusursuzca özetleyecektir!")
+                            st.error("⚠️ Bu videonun altyazı korumasını otomatik aşamadık.")
+                            st.info("💡 Lütfen videonun altındaki altyazıları kopyalayıp yan taraftaki 'Uzun Metin/Yazı Özetle' sekmesine yapıştırın. Sistemimiz onu kusursuzca özetleyecektir!")
                             metin_to_process = ""
                     
                     if metin_to_process:
@@ -198,8 +198,8 @@ else:
             if not uzun_metin or len(uzun_metin.strip()) < 10:
                 st.warning("Lütfen metin girin!")
             else:
-                with st.spinner("🤖 Yapay zeka metni analiz ediyor..."):
-                    yapay_zeka_ozeti = gemini_ile_ozetle(uzun_metin, user_api_key)
+                with st.spinner("Metin analiz ediliyor..."):
+                    yapay_zeka_ozeti = akilli_yerel_ozetleyici(uzun_metin)
                 
                 simdi = datetime.now()
                 t_sn = simdi.strftime("%d.%m.%Y")
