@@ -169,7 +169,7 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
 
 # --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
-st.write("Sıfır Dış Bağımlılık, Dinamik Analiz ve Maksimum Kararlılık Sürümü")
+st.write("Anlık Girdi Hafızası ve Kararlılık Senkronizasyonu Optimize Edildi")
 st.divider()
 
 if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
@@ -184,23 +184,26 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
 else:
     mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
     
-    # Yeni eklenen dinamik madde sayısı seçici kontrolü
     madde_limiti = st.select_slider("Çıkarılacak Kritik Madde Sayısı:", options=[5, 10, 15], value=5)
     
     if mod == "📺 YouTube Videosu":
-        video_linki = st.text_input("YouTube Linki veya Kodu:", value="1OkydHdhABQ")
+        # Ön belleğe takılmaması için benzersiz key atandı
+        video_linki = st.text_input("YouTube Linki veya Kodu:", value="1OkydHdhABQ", key="video_url_girdisi")
         if st.button("Videoyu Analiz Et"):
+            # Eski çalıştırma verilerini ve önbelleği tamamen temizle
+            st.cache_data.clear()
+            
             v_id = youtube_id_bul_kesin(video_linki)
             PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
             CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
             
-            with st.spinner("📥 Altyazılar başarıyla indiriliyor..."):
+            with st.spinner("📥 Yeni videonun altyazıları indiriliyor..."):
                 metin, altyazi_dili = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
                 
             if not metin:
-                st.error("Altyazı indirilemedi. Videonun altyazı içerdiğinden emin olun.")
+                st.error("Altyazı indirilemedi. Videonun altyazı içerdiğinden emin olun veya yeni linki doğru girdiğinizi kontrol edin.")
             else:
-                with st.spinner(f"🤖 Yapay zeka {madde_limiti} kritik maddeyi yapılandırıyor..."):
+                with st.spinner(f"🤖 Yapay zeka yeni video için {madde_limiti} kritik maddeyi yapılandırıyor..."):
                     ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil=altyazi_dili)
                     emojiler = ["📌", "📊", "💡", "⚙️", "🎯", "🚀", "🔑", "💎", "📣", "📝", "🧠", "🔥", "⚡", "🍀", "🎯"]
                     ozet_maddeleri = [f"{emojiler[i % len(emojiler)]} {m}" for i, m in enumerate(ham_maddeler)]
@@ -208,7 +211,7 @@ else:
                 simdi = datetime.now()
                 veritabani_kaydet({"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri})
                 
-                st.success(f"✅ {madde_limiti} Maddelik Analiz Başarıyla Tamamlandı!")
+                st.success(f"✅ {madde_limiti} Maddelik Yeni Analiz Başarıyla Tamamlandı!")
                 for madde in ozet_maddeleri:
                     st.write(madde)
                     
@@ -216,7 +219,7 @@ else:
                     st.caption(metin)
                     
     elif mod == "📝 Uzun Metin":
-        girilen_metin = st.text_area("Yorumlanacak Uzun Metni Girin:", height=200)
+        girilen_metin = st.text_area("Yorumlanacak Uzun Metni Girin:", height=200, key="metin_alan_girdisi")
         if st.button("Metni Analiz Et"):
             if not girilen_metin.strip():
                 st.warning("Metin alanı boş bırakılamaz.")
