@@ -33,27 +33,16 @@ def veritabani_kaydet(yeni_ozet):
 def youtube_id_bul_kesin(link_veya_id):
     girdi = link_veya_id.strip()
     
+    # Doğrudan 11 haneli kod girildiyse harf yapısını koru ve döndür
     if len(girdi) == 11 and not "/" in girdi and not "." in girdi and not "?" in girdi:
         return girdi
         
-    if "watch?v=" in girdi:
-        parcalar = girdi.split("watch?v=")
-        if len(parcalar) > 1:
-            sub_part = parcalar[1].split("&")
-            if len(sub_part[0]) == 11:
-                return sub_part[0]
-            
-    if "youtu.be/" in girdi:
-        parcalar = girdi.split("youtu.be/")
-        if len(parcalar) > 1:
-            sub_part = parcalar[1].split("?")
-            if len(sub_part[0]) == 11:
-                return sub_part[0]
-            
+    # Gelişmiş Regex Ayıklama (Büyük/Küçük Harf Duyarlı ve Liste Hatasından Arındırılmış)
     bulunan = re.findall(r'[a-zA-Z0-9_-]{11}', girdi)
     if bulunan:
         for parca in bulunan:
-            if parca.lower() not in ["youtube", "youtu", "watch"]:
+            # YouTube anahtar kelimelerini filtrele
+            if parca.lower() not in ["youtube", "youtu", "watch", "vitt", "html"]:
                 return parca
                 
     return girdi
@@ -249,3 +238,11 @@ def yan_menu_olustur():
             secilen = g
             
     st.sidebar.divider()
+    if st.sidebar.button("🗑️ Geçmişi Temizle"):
+        if os.path.exists(VERITABANI_DOSYASI):
+            os.remove(VERITABANI_DOSYASI)
+            st.sidebar.success("Geçmiş silindi!")
+            st.rerun()
+            
+    return secilen
+
