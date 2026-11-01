@@ -26,11 +26,9 @@ def veritabani_kaydet(yeni_ozet):
 def youtube_id_bul_kesin(link):
     girdi = str(link).strip()
     
-    # Eğer doğrudan 11 haneli temiz kod girildiyse direkt döndür (Harfleri bozma)
     if len(girdi) == 11 and not "/" in girdi and not "." in girdi and not "?" in girdi:
         return girdi
         
-    # Link girildiyse içindeki 11 haneli benzersiz video kodunu yakala
     bulunan = re.findall(r'[a-zA-Z0-9_-]{11}', girdi)
     if bulunan:
         for parca in bulunan:
@@ -56,16 +54,17 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
         'cookiefile': cerez_yolu,
         'outtmpl': f"sub_{safe_id}",
         'quiet': True,
-        'no_warnings': True
+        'no_warnings': True,
+        # KESİN ÇÖZÜM PARAMETRELERİ:
+        # ie_key='Youtube' vererek yt-dlp'nin 'generic' (genel link) algılayıcısına düşmesini ve 
+        # url birleştirme hatası yapmasını tamamen engelliyoruz. Doğrudan YouTube modülünü zorluyoruz.
+        'ie_key': 'Youtube',
+        'force_generic_extractor': False
     }
     try:
-        # MUTLAK ÇÖZÜM PARAMETRE ENJEKSİYONU:
-        # Adresin sonuna '&feature=shared&x=1' ekleyerek yt-dlp'nin video ID'sini 
-        # alan adıyla hatalı birleştirmesini (youtube.com1okyd...) fiziksel olarak engelliyoruz.
-        mutlak_url = f"https://youtube.com{safe_id}&feature=shared&x=1"
-        
+        # Doğrudan YouTube modülü zorlandığı için sadece video ID'sini veya temiz linki iletmemiz yeterlidir.
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([mutlak_url])
+            ydl.download([safe_id])
         
         bulunan_dosya = None
         for dosya in os.listdir("."):
@@ -98,7 +97,7 @@ for g in gecmis[:10]:
 
 # --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
-st.write("URL Kilitlenme Korumalı Sürüm")
+st.write("Extractor (Modül) Sabitlenmiş Güvenli Sürüm")
 
 mod = st.radio("Mod Seçin:", ["📺 YouTube", "📝 Metin"], horizontal=True)
 
