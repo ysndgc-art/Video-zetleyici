@@ -123,6 +123,23 @@ def ozeti_ekrana_yazdir(tarih, saat, metin, ozet):
     st.subheader("📝 Orijinal Kaynak:")
     st.caption(metin)
 
+# --- 🚀 İŞLEME VE KAYDETME FONKSİYONLARI ---
+def metni_ozetle_ve_kaydet(kaynak_metin):
+    simdi = datetime.now()
+    tarih = simdi.strftime("%d.%m.%Y")
+    saat = simdi.strftime("%H:%M:%S")
+    
+    ozet_sonuc = akilli_yerel_ozetleyici(kaynak_metin)
+    
+    yeni_kayit = {
+        "tarih": tarih,
+        "saat": saat,
+        "metin": kaynak_metin,
+        "ozet": ozet_sonuc
+    }
+    veritabani_kaydet(yeni_kayit)
+    ozeti_ekrana_yazdir(tarih, saat, kaynak_metin, ozet_sonuc)
+
 # --- YAN MENÜ (SIDEBAR) ---
 st.sidebar.title("📜 Özet Geçmişiniz")
 gecmis_listesi = veritabani_yukle()
@@ -170,15 +187,14 @@ else:
                 if not video_id:
                     st.error("❌ Geçersiz video kodu!")
                 else:
-                    st.info(f"🔍 Sistem: Video Kodu '{video_id}' başarıyla doğrulandı. Çerez korumalı altyazı motoru başlatılıyor...")
+                    st.info(f"🔍 Sistem: Video Kodu '{video_id}' başarıyla doğrulandı. Altyazı motoru başlatılıyor...")
                     metin_to_process = ""
-                    
                     PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
                     CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
                     
-                    with st.spinner("🤖 Güvenlik duvarları aşılıyor ve altyazılar güvenli çerezle çekiliyor..."):
+                    with st.spinner("🤖 Güvenlik duvarları aşılıyor ve altyazılar çekiliyor..."):
                         if not os.path.exists(CEREZ_YOLU):
-                            st.error(f"⚠️ Kritik Hata: Klasörde 'www.youtube.com_cookies.txt' dosyası bulunamadı! Lütfen bu dosyanın '{PROJE_DIZINI}' dizininde olduğundan emin olun.")
+                            st.error(f"⚠️ Kritik Hata: Klasörde 'www.youtube.com_cookies.txt' dosyası bulunamadı!")
                         else:
                             try:
                                 altyazi_listesi = YouTubeTranscriptApi.list_transcripts(video_id, cookies=CEREZ_YOLU)
@@ -193,22 +209,9 @@ else:
                                 st.error(f"Altyazı API Hatası: {str(e)}")
 
                     if metin_to_process:
-                        simdi = datetime.now()
-                        tarih = simdi.strftime("%d.%m.%Y")
-                        saat = simdi.strftime("%H:%M:%S")
-                        
-                        ozet_sonuc = akilli_yerel_ozetleyici(metin_to_process)
-                        
-                        yeni_kayit = {
-                            "tarih": tarih,
-                            "saat": saat,
-                            "metin": metin_to_process,
-                            "ozet": ozet_sonuc
-                        }
-                        veritabani_kaydet(yeni_kayit)
-                        ozeti_ekrana_yazdir(tarih, saat, metin_to_process, ozet_sonuc)
+                        metni_ozetle_ve_kaydet(metin_to_process)
                     else:
-                        st.error("❌ YouTube bu videonun dış sunuculardan indirilmesini tamamen engellemiş veya videoda aktif bir altyazı bulunmuyor.")
+                        st.error("❌ YouTube bu videonun dış sunuculardan indirilmesini engelledmiş veya altyazı bulunmuyor.")
 
     # TAB 2: METİN ÖZETLEME
     with sekme2:
@@ -219,13 +222,5 @@ else:
             if not girilen_metin.strip():
                 st.warning("Lütfen boş bir metin bırakmayın!")
             else:
-                simdi = datetime.now()
-                tarih = simdi.strftime("%d.%m.%Y")
-                saat = simdi.strftime("%H:%M:%S")
-                
-                with st.spinner("🤖 Metin analiz ediliyor ve önemli noktalar çıkartılıyor..."):
-                    ozet_sonuc = akilli_yerel_ozetleyici(girilen_metin)
-                    
-                    yeni_kayit = {
-                        "tarih": tarih,
-                        "saat": saat,
+                with st.spinner("🤖 Metin analiz ediliyor..."):
+                    metni_ozetle_ve_kaydet(girilen_metin)
