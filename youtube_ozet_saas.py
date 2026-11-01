@@ -41,27 +41,24 @@ def youtube_id_bul_kesin(link_veya_id):
     if "watch?v=" in girdi:
         parcalar = girdi.split("watch?v=")
         if len(parcalar) > 1:
-            # Parametreleri temizle (&t=... vb.)
-            sub_part = parcalar[1].split("&")[0]
-            if len(sub_part) >= 11:
-                return sub_part[:11]
+            sub_part = parcalar[1].split("&")
+            if len(sub_part[0]) == 11:
+                return sub_part[0]
             
     if "youtu.be/" in girdi:
         parcalar = girdi.split("youtu.be/")
         if len(parcalar) > 1:
-            sub_part = parcalar[1].split("?")[0]
-            if len(sub_part) >= 11:
-                return sub_part[:11]
+            sub_part = parcalar[1].split("?")
+            if len(sub_part[0]) == 11:
+                return sub_part[0]
             
     # Gelişmiş Regex Ayıklama (Büyük/Küçük Harf Duyarlı)
     bulunan = re.findall(r'[a-zA-Z0-9_-]{11}', girdi)
     if bulunan:
-        # HATA DÜZELTMESİ: Liste yerine listenin içindeki saf string objesini döndürüyoruz
         for parca in bulunan:
             if parca.lower() not in ["youtube", "youtu", "watch"]:
                 return parca
-        return bulunan[0]
-        
+                
     return girdi
 
 def akilli_yerel_ozetleyici(metin):
@@ -157,7 +154,6 @@ def ytdlp_altyazi_cek(clean_video_id, cerez_yolu):
         'no_warnings': True
     }
     try:
-        # KESİN VE TEMİZ STRING BİRLEŞTİRME
         mutlak_url = f"https://youtube.com{safe_id}"
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([mutlak_url])
@@ -228,6 +224,19 @@ def metin_modu_calistir():
             with st.spinner("🤖 Metin analiz ediliyor..."):
                 metni_ozetle_ve_kaydet(girilen_metin)
 
+def gecmis_görüntüle_modu(eski_ozet):
+    st.info("📂 **Geçmiş Özet Görüntüleniyor**")
+    ozeti_ekrana_yazdir(eski_ozet['tarih'], eski_ozet['saat'], eski_ozet['metin'], eski_ozet['ozet'])
+    if st.button("➕ Yeni Özet Ekranına Dön"):
+        st.rerun()
+
+def ana_akisi_yonet():
+    mod_secimi = st.radio("Lütfen Özetleme Modu Seçin:", ["📺 YouTube Videosu Özetle", "📝 Uzun Metin Özetle"], horizontal=True)
+    if mod_secimi == "📺 YouTube Videosu Özetle":
+        youtube_modu_calistir()
+    if mod_secimi == "📝 Uzun Metin Özetle":
+        metin_modu_calistir()
+
 # --- YAN MENÜ GEÇMİŞ YÖNETİMİ ---
 st.sidebar.title("📜 Özet Geçmişiniz")
 gecmis_listesi = veritabani_yukle()
@@ -237,15 +246,3 @@ if not gecmis_listesi:
     st.sidebar.info("Henüz geçmiş özetiniz bulunmuyor.")
 else:
     for sira, g in enumerate(gecmis_listesi):
-        if st.sidebar.button(f"⏱️ {g['saat']} - {g['metin'][:20]}...", key=f"g_{sira}"):
-            secilen_eski_ozet = g
-
-st.sidebar.divider()
-if st.sidebar.button("🗑️ Geçmişi Temizle"):
-    if os.path.exists(VERITABANI_DOSYASI):
-        os.remove(VERITABANI_DOSYASI)
-        st.sidebar.success("Geçmiş silindi!")
-        st.rerun()
-
-# --- ANA SAYFA ÇALIŞTIRICI ---
-if secilen_eski_ozet:
