@@ -186,48 +186,6 @@ def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
     for m in maddeler: txt_cikisi += f"{m}\n"
     return txt_cikisi
 
-# --- MOD FONKSİYONLARI ---
-def youtube_modu_calistir(limite_bak):
-    video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="Örn: https://youtube.com...")
-    if st.button("Videoyu Analiz Et"):
-        if not video_linki.strip():
-            st.warning("Lütfen bir YouTube linki girin.")
-            return
-        izin_verildi, _ = kota_kontrol_ve_guncelle()
-        if not izin_verildi:
-            st.error("❌ Günlük ücretsiz limite ulaştınız.")
-            return
-        v_id = youtube_id_bul_kesin(video_linki)
-        PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
-        CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
-        with st.spinner("📥 Altyazılar indiriliyor..."):
-            metin, altyazi_dili = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
-        if not metin:
-            st.error("YouTube sunucularından altyazı çekilemedi. Video gizli olabilir veya altyazı içermiyor olabilir.")
-            return
-        with st.spinner("🤖 Yapay zeka maddeleri çıkarıyor..."):
-            ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=limite_bak, dil=altyazi_dili)
-            ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
-        simdi = datetime.now()
-        veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri}
-        gecmis_ekle(veri_paketi)
-        st.session_state["aktif_ozet"] = veri_paketi
-        st.rerun()
-
-def metin_modu_calistir(limite_bak):
-    girilen_metin = st.text_area("Yorumlanacak Uzun Metni Girin:", height=200)
-    if st.button("Metni Analiz Et"):
-        if not girilen_metin.strip():
-            st.warning("Lütfen metin girin.")
-            return
-        ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=limite_bak, dil="tr")
-        ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler]
-        simdi = datetime.now()
-        veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": girilen_metin, "ozet": ozet_maddeleri}
-        gecmis_ekle(veri_paketi)
-        st.session_state["aktif_ozet"] = veri_paketi
-        st.rerun()
-
 # --- SIDEBAR ---
 st.sidebar.title("📜 Analiz Geçmişiniz")
 veri_havuzu = veritabani_yukle()
@@ -244,3 +202,41 @@ st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
 st.write("Gelişmiş İstatistik Paneli ve Kolay Dışa Aktarma Sistemi")
 st.divider()
 
+# Giriş Elemanları Akışı
+mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
+madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
+
+if mod == "📺 YouTube Videosu":
+    video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="Örn: https://youtube.com...", key="yt_url_box")
+    if st.button("Videoyu Analiz Et", key="yt_btn"):
+        if not video_linki.strip():
+            st.warning("Lütfen bir YouTube linki girin.")
+        else:
+            izin_verildi, _ = kota_kontrol_ve_guncelle()
+            if not izin_verildi:
+                st.error("❌ Günlük ücretsiz limite ulaştınız.")
+            else:
+                v_id = youtube_id_bul_kesin(video_linki)
+                PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
+                CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
+                with st.spinner("📥 Altyazılar indiriliyor..."):
+                    metin, altyazi_dili = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
+                if not metin:
+                    st.error("YouTube sunucularından altyazı çekilemedi. Video gizli olabilir veya altyazı içermiyor olabilir.")
+                else:
+                    with st.spinner("🤖 Yapay zeka maddeleri çıkarıyor..."):
+                        ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil=altyazi_dili)
+                        ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
+                    simdi = datetime.now()
+                    veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri}
+                    gecmis_ekle(veri_paketi)
+                    st.session_state["aktif_ozet"] = veri_paketi
+                    st.rerun()
+
+else:
+    girilen_metin = st.text_area("Yorumlanacak Uzun Metni Girin:", height=200, key="text_area_box")
+    if st.button("Metni Analiz Et", key="text_btn"):
+        if not girilen_metin.strip():
+            st.warning("Lütfen metin girin.")
+        else:
+            ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti, dil="tr")
