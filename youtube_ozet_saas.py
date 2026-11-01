@@ -33,9 +33,20 @@ def veritabani_kaydet(yeni_ozet):
 
 # --- 🔍 YOUTUBE ID AYIKLAYICI ---
 def youtube_id_bul(url):
-    şablon = r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})'
+    """
+    Her türlü YouTube link varyasyonundan (Mobil, Shorts, Detaylı Parametreli)
+    11 haneli Video ID'sini hatasız bir şekilde ayıklar.
+    """
+    şablon = r'(?:v=|\/)([a-zA-Z0-9_-]{11})(?:\?|&|$|\s)'
     eslesme = re.search(şablon, url)
-    return eslesme.group(1) if eslesme else None
+    if eslesme:
+        return eslesme.group(1)
+    
+    # Eğer yukarıdaki şablon kaçırırsa alternatif olarak 11 haneli standart yapıyı ara
+    yedek_sablon = r'(?:youtu\.be\/|youtube\.com\/(?:v\/|embed\/|watch\?v=|shorts\/))([a-zA-Z0-9_-]{11})'
+    yedek_eslesme = re.search(yedek_sablon, url)
+    return yedek_eslesme.group(1) if yedek_eslesme else None
+
 
 def yapay_zeka_ozet_motoru(metin):
     kelimeler = metin.split()
