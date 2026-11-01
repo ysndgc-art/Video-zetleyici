@@ -59,7 +59,7 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
         'outtmpl': f"sub_{video_id}",
         'quiet': True,
         'no_warnings': True,
-        'external_downloader_args': ['--timeout', '15'] # 15 saniyede cevap gelmezse düşür
+        'external_downloader_args': ['--timeout', '15']
     }
     
     try:
@@ -242,7 +242,7 @@ else:
                     st.session_state.islem_basladi = True
                     st.rerun()
 
-        # İşlem tetiklendiğinde butondan bağımsız çalışan alan
+        # İşlem tetiklendiğinde çalışan alan
         if st.session_state.islem_basladi and st.session_state.video_id:
             st.info(f"🔍 Sistem: Video Kodu '{st.session_state.video_id}' doğrulandı. İşlem başlatılıyor...")
             
@@ -254,3 +254,5 @@ else:
                 if not os.path.exists(CEREZ_YOLU):
                     st.error(f"⚠️ Kritik Hata: Klasörde 'www.youtube.com_cookies.txt' dosyası bulunamadı!")
                 else:
+                    metin_to_process = ytdlp_altyazi_cek(st.session_state.video_id, CEREZ_YOLU)
+
