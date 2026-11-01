@@ -38,12 +38,10 @@ def youtube_id_bul_kesin(link):
 
 # --- 🧠 YAPILANDIRILMIŞ TÜRKÇE YEREL ANALİZ MOTORU ---
 def yerel_mantik_ozetleyici(metin):
-    # 1. TEMİZLİK: Parantez ve köşeli parantez gürültülerini temizle ([Müzik], (Laughter) vb.)
     temiz_metin = re.sub(r'\[.*?\]', '', metin)
     temiz_metin = re.sub(r'\(.*?\)', '', temiz_metin)
     temiz_metin = re.sub(r'\s+', ' ', temiz_metin).strip()
     
-    # 2. YAPAY NOKTALAMA: Eğer otomatik altyazıysa ve hiç nokta yoksa, akıllı bölme yap
     if "." not in temiz_metin or temiz_metin.count(".") < 3:
         ham_kelimeler = temiz_metin.split()
         parçalanmış_cumleler = []
@@ -57,7 +55,6 @@ def yerel_mantik_ozetleyici(metin):
     if len(cumleler) <= 5:
         return [c for c in cumleler if len(c.split()) > 3]
 
-    # 3. GELİŞMİŞ TÜRKÇE STOP-WORDS FİLTRESİ
     kelimeler = re.findall(r'\w+', temiz_metin.lower())
     durma_kelimeleri = {
         "ve", "veya", "ama", "fakat", "ile", "bir", "bu", "şu", "o", "da", "de", 
@@ -71,7 +68,6 @@ def yerel_mantik_ozetleyici(metin):
         if k not in durma_kelimeleri and len(k) > 3:
             frekanslar[k] = frekanslar.get(k, 0) + 1
 
-    # 4. CÜMLE PUANLAMA VE SEÇİM
     cumle_puanlari = {}
     for idx, cumle in enumerate(cumleler):
         puan = 0
@@ -95,8 +91,7 @@ def yerel_mantik_ozetleyici(metin):
     for i, idx in enumerate(en_iyi_indeksler):
         ham_cumle = cumleler[idx].strip()
         if ham_cumle:
-            # Cümlenin ilk harfini büyüt
-            ham_cumle = ham_cumle[0].upper() + ham_cumle[1:]
+            ham_cumle = ham_cumle.upper() + ham_cumle[1:]
             if not ham_cumle.endswith("."):
                 ham_cumle += "."
             sonuc.append(f"{emojiler[i]} {ham_cumle}")
@@ -106,23 +101,19 @@ def yerel_mantik_ozetleyici(metin):
 # --- 🌐 AKILLI ÇEVİRİ MOTORU ---
 def metni_turkceye_cevir(ham_metin):
     try:
-        # Karakter limiti aşımını engellemek için metni güvenli parçalara bölüp çeviriyoruz
         if len(ham_metin) > 4500:
             parcalar = [ham_metin[i:i+4500] for i in range(0, len(ham_metin), 4500)]
             cevirilmis_parcalar = []
             for p in parcalar:
                 cevirilmis_parcalar.append(GoogleTranslator(source='auto', target='tr').translate(p))
             return " ".join(cevirilmis_parcalar)
-        else:
-            return GoogleTranslator(source='auto', target='tr').translate(ham_metin)
+        return GoogleTranslator(source='auto', target='tr').translate(ham_metin)
     except Exception as e:
-        st.warning(f"⚠️ Çeviri motorunda küçük bir aksama yaşandı, ham metin işleniyor: {str(e)}")
+        st.warning(f"⚠️ Çeviri motorunda küçük bir aksama yaşandı: {str(e)}")
         return ham_metin
 
 def ytdlp_altyazi_cek(video_id, cerez_yolu):
     safe_id = str(video_id).strip()
-    
-    # AKILLI ALTYAZI ÖNCELİKLENDİRME: Önce Türkçe, yoksa İngilizce, o da yoksa otomatik altyazı
     ydl_opts = {
         'writesubtitles': True,
         'writeautomaticsub': True,
@@ -146,9 +137,7 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
                 break
                 
         if bulunan_dosya and os.path.exists(bulunan_dosya):
-            # Hangi dilin indirildiğini tespit et
             indirilen_dil = "en" if ".en." in bulunan_dosya else "tr"
-            
             with open(bulunan_dosya, "r", encoding="utf-8") as f:
                 icerik = f.read()
             lines = icerik.split("\n")
@@ -163,16 +152,57 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
             except: pass
             
             ham_metin_sonuc = " ".join(temiz_satirlar)
-            
-            # Eğer indirilen altyazı Türkçe değilse otomatik Türkçe'ye çeviriyoruz
             if indirilen_dil == "en" or not any(k in ham_metin_sonuc.lower() for k in ["ve", "bir", "bu"]):
-                st.info("🌐 Videoda Türkçe altyazı bulunamadı. İngilizce içerik algılandı, otomatik Türkçe çeviri başlatılıyor...")
+                st.info("🌐 İngilizce içerik algılandı, otomatik Türkçe çeviri başlatılıyor...")
                 return metni_turkceye_cevir(ham_metin_sonuc)
-                
             return ham_metin_sonuc
     except Exception as e:
         st.error(f"Altyazı Motor Hatası: {str(e)}")
     return None
+
+# --- BAĞIMSIZ MOD MODÜLLERİ ---
+def youtube_modu_calistir():
+    video_linki = st.text_input("YouTube Linki veya Kodu:", value="1OkydHdhABQ")
+    if st.button("Videoyu Analiz Et"):
+        v_id = youtube_id_bul_kesin(video_linki)
+        PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
+        CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
+        
+        with st.spinner("📥 1. Adım: Altyazılar indiriliyor..."):
+            metin = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
+            
+        if not metin:
+            st.error("Altyazı indirilemedi. Videonun altyazı içerdiğinden emin olun.")
+            return
+            
+        with st.spinner("🤖 2. Adım: Cümleler süzgeçten geçiriliyor..."):
+            ozet_maddeleri = yerel_mantik_ozetleyici(metin)
+            
+        simdi = datetime.now()
+        veritabani_kaydet({"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri})
+        
+        st.success("✅ Analiz Başarıyla Tamamlandı!")
+        st.subheader("📊 Yapılandırılmış Mantıksal Maddeler (Türkçe):")
+        for madde in ozet_maddeleri:
+            st.write(madde)
+        st.subheader("📝 İşlenen Türkçe Kaynak Metin:")
+        st.caption(metin)
+
+def metin_modu_calistir():
+    girilen_metin = st.text_area("Özetlenecek Metni Girin:", height=200)
+    if st.button("Metni Özetle"):
+        if not girilen_metin.strip():
+            st.warning("Metin alanı boş bırakılamaz.")
+            return
+            
+        with st.spinner("🤖 Dil kontrol ediliyor ve özetleniyor..."):
+            turkce_metin = metni_turkceye_cevir(girilen_metin)
+            ozet_maddeleri = yerel_mantik_ozetleyici(turkce_metin)
+            
+        st.success("✅ İşlem Başarılı!")
+        st.subheader("📊 Özet Maddeleri:")
+        for madde in ozet_maddeleri:
+            st.write(madde)
 
 # --- SIDEBAR GEÇMİŞ ---
 st.sidebar.title("📜 Özet Geçmişiniz")
@@ -193,7 +223,7 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
 
 # --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
-st.write("Otomatik İngilizce-Türkçe Çeviri Destekli Kararlı Sürüm")
+st.write("Çeviri Destekli ve Girinti Korumalı Stabil Sürüm")
 st.divider()
 
 if "aktif_ozet" in st.session_state:
@@ -201,47 +231,15 @@ if "aktif_ozet" in st.session_state:
     g = st.session_state["aktif_ozet"]
     st.success(f"✅ Analiz Tarihi: {g['tarih']} - {g['saat']}")
     st.subheader("📊 Çıkarılan Kritik Maddeler:")
-    for madde in g['ozet']:
-        st.write(madde)
-    st.subheader("📝 Kaynak Metin (Türkçe/Çeviri):")
+    for m in g['ozet']: st.write(m)
+    st.subheader("📝 Kaynak Metin:")
     st.caption(g['metin'])
     if st.button("➕ Yeni Özet Ekranına Dön"):
         del st.session_state["aktif_ozet"]
         st.rerun()
 else:
     mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
-
     if mod == "📺 YouTube Videosu":
-        video_linki = st.text_input("YouTube Linki veya Kodu:", value="1OkydHdhABQ")
-        if st.button("Videoyu Analiz Et"):
-            v_id = youtube_id_bul_kesin(video_linki)
-            PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
-            CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
-            
-            with st.spinner("📥 1. Adım: Altyazılar indiriliyor ve diller taranıyor..."):
-                metin = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
-                
-            if metin:
-                with st.spinner("🤖 2. Adım: Cümleler mantıksal süzgeçten geçiriliyor..."):
-                    ozet_maddeleri = yerel_mantik_ozetleyici(metin)
-                
-                simdi = datetime.now()
-                tarih_str = simdi.strftime("%d.%m.%Y")
-                saat_str = simdi.strftime("%H:%M:%S")
-                
-                veritabani_kaydet({"tarih": tarih_str, "saat": saat_str, "metin": metin, "ozet": ozet_maddeleri})
-                
-                st.success("✅ Analiz Başarıyla Tamamlandı!")
-                st.subheader("📊 Yapılandırılmış Mantıksal Maddeler (Türkçe):")
-                for madde in ozet_maddeleri:
-                    st.write(madde)
-                    
-                st.subheader("📝 İşlenen Türkçe Kaynak Metin:")
-                st.caption(metin)
-            else:
-                st.error("Altyazı indirilemedi. Videonun altyazı içerdiğinden emin olun.")
-
+        youtube_modu_calistir()
     if mod == "📝 Uzun Metin":
-        girilen_metin = st.text_area("Özetlenecek Metni Girin (Farklı dildeyse otomatik Türkçe'ye çevrilir):", height=200)
-        if st.button("Metni Özetle"):
-            if not girilen_metin.strip():
+        metin_modu_calistir()
