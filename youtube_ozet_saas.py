@@ -54,7 +54,9 @@ def youtube_id_bul_kesin(link_veya_id):
 # --- 🔥 GERÇEK YAPAY ZEKA ÖZET MOTORU ---
 def gemini_ile_ozetle(girdi_metni):
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        # Model adının başına 'models/' ekleyerek tam yolunu belirtiyoruz
+        model = genai.GenerativeModel("models/gemini-1.5-flash")
+        
         talimat = (
             "Sana verilen metni veya konuşma dökümünü incele. "
             "En önemli yerleri cımbızla çekerek tam 5 maddelik, anlaşılır ve şık bir Türkçe özet çıkar. "
@@ -69,7 +71,6 @@ def gemini_ile_ozetle(girdi_metni):
             f"❌ Yapay Zeka Bağlantı Hatası: {e}",
             "⚠️ Lütfen Streamlit Cloud ayarlarından şifrenizi doğru girdiğinize emin olun."
         ]
-
 def pdf_rapor_uret(tarih, saat, orijinal_metin, ozet_maddeleri):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, title="AI Ozet Raporu")
