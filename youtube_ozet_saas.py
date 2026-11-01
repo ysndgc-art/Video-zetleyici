@@ -3,6 +3,8 @@ import json
 import os
 import time
 from datetime import datetime
+from youtube_transcript_api import YouTubeTranscriptApi
+import re
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -10,7 +12,7 @@ from reportlab.lib import colors
 import io
 
 # Web Sayfası Tasarımı
-st.set_page_config(page_title="AI Özetleyici SaaS Pro", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
 
 # --- VERİTABANI (JSON) FONKSİYONLARI ---
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
@@ -29,6 +31,12 @@ def veritabani_kaydet(yeni_ozet):
         with open(VERITABANI_DOSYASI, "w", encoding="utf-8") as f:
             json.dump(gecmis, f, ensure_ascii=False, indent=4)
 
+# --- 🔍 YOUTUBE ID AYIKLAYICI ---
+def youtube_id_bul(url):
+    şablon = r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})'
+    eslesme = re.search(şablon, url)
+    return eslesme.group(1) if eslesme else None
+
 def yapay_zeka_ozet_motoru(metin):
     kelimeler = metin.split()
     if len(kelimeler) < 3:
@@ -44,59 +52,32 @@ def yapay_zeka_ozet_motoru(metin):
         f"🎯 **Stratejik Sonuç:** Heddeflenen kitleye ulaşmak için adımların parçalara bölünerek yönetilmesi şarttır."
     ]
 
-# --- 🛠️ YENİ: PDF RAPOR ÜRETME MOTORU ---
+# --- 🛠️ PDF RAPOR ÜRETME MOTORU ---
 def pdf_rapor_uret(tarih, saat, orijinal_metin, ozet_maddeleri):
-    """Kullanıcının indirmesi için bellek içinde şık bir PDF dosyası oluşturur."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, title="AI Ozet Raporu")
     hikaye = []
-    
-    # Rapor Stilleri
     stiller = getSampleStyleSheet()
     
-    baslik_stili = ParagraphStyle(
-        'RaporBaslik',
-        parent=stiller['Heading1'],
-        fontSize=24,
-        textColor=colors.HexColor('#1E3A8A'),
-        spaceAfter=12
-    )
-    
-    alt_baslik_stili = ParagraphStyle(
-        'RaporAltBaslik',
-        parent=stiller['Normal'],
-        fontSize=10,
-        textColor=colors.gray,
-        spaceAfter=20
-    )
-    
-    madde_stili = ParagraphStyle(
-        'RaporMadde',
-        parent=stiller['Normal'],
-        fontSize=12,
-        spaceAfter=10,
-        leading=16
-    )
+    baslik_stili = ParagraphStyle('RB', parent=stiller['Heading1'], fontSize=24, textColor=colors.HexColor('#1E3A8A'), spaceAfter=12)
+    alt_baslik_stili = ParagraphStyle('RAB', parent=stiller['Normal'], fontSize=10, textColor=colors.gray, spaceAfter=20)
+    madde_stili = ParagraphStyle('RM', parent=stiller['Normal'], fontSize=12, spaceAfter=10, leading=16)
 
-    # PDF İçeriğini Ekleme
-    hikaye.append(Paragraph("📺 AI ÖZETLEYİCİ SAAS RAPORU", baslik_stili))
-    hikaye.append(Paragraph(f"Tarih: {tarih} | Saat: {saat} | Rapor ID: #SR{int(time.time())}", alt_baslik_stili))
+    hikaye.append(Paragraph("📺 AI VİDEO & METİN ÖZETLEYİCİ RAPORU", baslik_stili))
+    hikaye.append(Paragraph(f"Tarih: {tarih} | Saat: {saat}", alt_baslik_stili))
     hikaye.append(Spacer(1, 10))
-    
     hikaye.append(Paragraph("<b>🤖 Yapay Zeka Özeti (5 Kritik Madde):</b>", stiller['Heading2']))
     hikaye.append(Spacer(1, 5))
     
     for madde in ozet_maddeleri:
-        # Markdown yıldızlarını ve emojileri temizleyerek temiz metin basıyoruz
         temiz_madde = madde.replace("**", "").replace("📌", "-").replace("📊", "-").replace("💡", "-").replace("⚙️", "-").replace("🎯", "-")
         hikaye.append(Paragraph(temiz_madde, madde_stili))
         
     hikaye.append(Spacer(1, 20))
-    hikaye.append(Paragraph("<b>📝 Orijinal Kaynak Metin (İlk Kısım):</b>", stiller['Heading2']))
+    hikaye.append(Paragraph("<b>📝 Kaynak Metin / Altyazı Özeti (İlk Kısım):</b>", stiller['Heading2']))
     hikaye.append(Spacer(1, 5))
     hikaye.append(Paragraph(orijinal_metin[:500] + "...", stiller['Normal']))
     
-    # Feragatname Notu (Sağlık/Klinik/Genel AI Uyarı Standardı)
     hikaye.append(Spacer(1, 30))
     hikaye.append(Paragraph("<font size=8 color=gray>Bu rapor bilgilendirme amaçlı yapay zeka tarafından üretilmiştir. AI yanıtları hata içerebilir.</font>", stiller['Normal']))
     
@@ -125,51 +106,65 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
         st.rerun()
 
 # --- ANA SAYFA TASARIMI ---
-st.title("🚀 AI Gelişmiş Özetleyici SaaS Panel")
-st.write("Veritabanı ve PDF rapor desteğiyle, bütçesiz çalışan profesyonel MVP sürümü.")
+st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
+st.write("YouTube linklerini veya uzun metinleri saniyeler içinde analiz edin, 5 kritik maddede özetleyin.")
 st.divider()
 
-# Durum 1: Geçmişten bir özete tıklandıysa
 if secilen_eski_ozet:
     st.info(f"📂 **Geçmişten Görüntülenen Özet** ({secilen_eski_ozet['tarih']} - {secilen_eski_ozet['saat']})")
-    
-    # PDF İndirme Butonu Entegrasyonu
     pdf_dosyasi = pdf_rapor_uret(secilen_eski_ozet['tarih'], secilen_eski_ozet['saat'], secilen_eski_ozet['metin'], secilen_eski_ozet['ozet'])
-    st.download_button(
-        label="📥 Bu Özeti PDF Olarak İndir",
-        data=pdf_dosyasi,
-        file_name=f"ai_ozet_{secilen_eski_ozet['saat'].replace(':','_')}.pdf",
-        mime="application/pdf"
-    )
+    st.download_button(label="📥 Bu Özeti PDF Olarak İndir", data=pdf_dosyasi, file_name=f"ai_ozet_{secilen_eski_ozet['saat'].replace(':','_')}.pdf", mime="application/pdf")
     
     st.subheader("🤖 Çıkarılan 5 Madde:")
-    for madde in secilen_eski_ozet['ozet']:
-        st.write(madde)
-        
-    st.subheader("📝 Orijinal Metin:")
+    for madde in secilen_eski_ozet['ozet']: st.write(madde)
+    st.subheader("📝 Orijinal Kaynak:")
     st.caption(secilen_eski_ozet['metin'])
-    
-    if st.button("➕ Yeni Özet Oluşturma Ekranına Dön"):
-        st.rerun()
+    if st.button("➕ Yeni Özet Oluşturma Ekranına Dön"): st.rerun()
 
-# Durum 2: Yeni Özet Oluşturma Ekranı
 else:
-    uzun_metin = st.text_area("Özetlenecek Metni Buraya Yapıştırın:", placeholder="Analiz edilecek yazıyı girin...", height=200)
+    # Sekmeli Arayüz (Tabs) - Kullanıcı Deneyimi için En Şık Çözüm
+    sekme1, sekme2 = st.tabs(["📺 YouTube Videosu Özetle", "📝 Uzun Metin/Yazı Özetle"])
+    
+    metin_to_process = ""
 
-    if st.button("Yapay Zeka ile Özetle ve Hafızaya Kaydet"):
-        if not uzun_metin or len(uzun_metin.strip()) < 10:
-            st.warning("Lütfen analiz edilebilmesi için yeterli uzunlukta bir metin girin!")
-        else:
-            with st.spinner("🤖 Yapay zeka veriyi işliyor..."):
-                time.sleep(1)
-            
-            yapay_zeka_ozeti = yapay_zeka_ozet_motoru(uzun_metin)
-            simdi = datetime.now()
-            yeni_kayit = {
-                "tarih": simdi.strftime("%d.%m.%Y"),
-                "saat": simdi.strftime("%H:%M"),
-                "metin": uzun_metin,
-                "ozet": yapay_zeka_ozeti
-            }
-            veritabani_kaydet(yeni_kayit)
-            st.rerun()
+    # TAB 1: YOUTUBE ÖZETLEME
+    with sekme1:
+        video_linki = st.text_input("YouTube Video Linkini Yapıştırın:", placeholder="https://youtube.com... veya https://youtu.be...")
+        if st.button("Videoyu Analiz Et ve Özetle", key="yt_btn"):
+            if not video_linki:
+                st.warning("Lütfen bir link girin!")
+            else:
+                video_id = youtube_id_bul(video_linki)
+                if not video_id:
+                    st.error("❌ Geçersiz YouTube link formatı!")
+                else:
+                    with st.spinner("YouTube altyazıları çekiliyor ve yapay zeka analiz ediyor..."):
+                        try:
+                            # Önce Türkçe dene, yoksa İngilizce altyazıyı çek
+                            konusma_verisi = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
+                            metin_to_process = " ".join([parca['text'] for parca in konusma_verisi])
+                        except Exception as e:
+                            st.error("❌ Bu videonun altyazı verilerine ulaşılamadı. (Altyazılar kapalı olabilir veya yerel ağ engeli mevcut).")
+                            st.info("Eğer yerel bilgisayardaysanız, lütfen bu kodu GitHub'a gönderip canlı sitenizde deneyin. Canlıda tıkır tıkır çalışacaktır!")
+
+    # TAB 2: METİN ÖZETLEME
+    with sekme2:
+        uzun_metin = st.text_area("Özetlenecek Metni Buraya Yapıştırın:", placeholder="Analiz edilecek yazıyı girin...", height=150)
+        if st.button("Metni Analiz Et ve Özetle", key="txt_btn"):
+            if not uzun_metin or len(uzun_metin.strip()) < 10:
+                st.warning("Lütfen yeterli uzunlukta bir metin girin!")
+            else:
+                metin_to_process = uzun_metin
+
+    # ORTAK İŞLEME VE VERİTABANINA KAYDETME
+    if metin_to_process:
+        yapay_zeka_ozeti = yapay_zeka_ozet_motoru(metin_to_process)
+        simdi = datetime.now()
+        yeni_kayit = {
+            "tarih": simdi.strftime("%d.%m.%Y"),
+            "saat": simdi.strftime("%H:%M"),
+            "metin": metin_to_process,
+            "ozet": yapay_zeka_ozeti
+        }
+        veritabani_kaydet(yeni_kayit)
+        st.rerun()
