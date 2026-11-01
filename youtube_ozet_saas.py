@@ -15,7 +15,13 @@ def veritabani_yukle():
     try:
         if os.path.exists(VERITABANI_DOSYASI):
             with open(VERITABANI_DOSYASI, "r", encoding="utf-8") as f:
-                return json.load(f)
+                veri = json.load(f)
+                # --- AKILLI FORMAT DÖNÜŞTÜRÜCÜ (MIGRATION) ---
+                # Eğer eski veritabanı düz bir liste ise, yeni sözlük yapısına otomatik çevirir
+                if isinstance(veri, list):
+                    return {"gecmis": veri, "kota": {}}
+                if isinstance(veri, dict) and "gecmis" in veri:
+                    return veri
     except:
         pass
     return {"gecmis": [], "kota": {}}
@@ -173,7 +179,6 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
 
 # --- 📥 EVRENSEL DIŞA AKTARMA FORMATLARI MOTORU ---
 def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
-    # TXT Formati
     txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {tarih} - {saat}\n"
     if baslik_url:
         txt_cikisi += f"Kaynak: {baslik_url}\n"
@@ -181,7 +186,6 @@ def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
     for m in maddeler:
         txt_cikisi += f"{m}\n"
         
-    # Markdown Formati
     md_cikisi = f"# 📺 AI Akıllı Analiz Raporu\n\n- **Tarih:** {tarih} - {saat}\n"
     if baslik_url:
         md_cikisi += f"- **Kaynak:** [{baslik_url}]({baslik_url})\n"
@@ -190,7 +194,6 @@ def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
         md_cikisi += f"* {m}\n"
     md_cikisi += "\n---\n*AI Video & Metin Yorumlayıcı SaaS tarafından üretilmiştir.*"
 
-    # HTML/Evrensel Yazdırılabilir PDF Formati (Streamlit için en kararlı yöntem)
     html_cikisi = f"""
     <html>
     <head>
@@ -224,8 +227,8 @@ def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
 # --- SIDEBAR ---
 st.sidebar.title("📜 Analiz Geçmişiniz")
 veri_havuzu = veritabani_yukle()
-gecmis_listesi = veri_havuzu.get("gecmis", []) if isinstance(veri_havuzu, dict) else []
-kota_havuzu = veri_havuzu.get("kota", {}) if isinstance(veri_havuzu, dict) else []
+gecmis_listesi = veri_havuzu.get("gecmis", [])
+kota_havuzu = veri_havuzu.get("kota", {})
 
 if gecmis_listesi:
     for sira, g in enumerate(gecmis_listesi[:10]):
@@ -273,5 +276,3 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
     t_fmt, m_fmt, h_fmt = rapor_formatlarini_uret(g.get('tarih',''), g.get('saat',''), g.get('ozet', []))
     
     col1, col2, col3 = st.columns(3)
-    with col1:
-        st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name=f"analiz_{g.get('saat','')}.txt", mime="text/plain")
