@@ -11,7 +11,7 @@ from reportlab.lib import colors
 import io
 import yt_dlp
 
-# Sayfa Yapılandırması
+# --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
 
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
@@ -32,19 +32,14 @@ def veritabani_kaydet(yeni_ozet):
 
 def youtube_id_bul_kesin(link_veya_id):
     girdi = link_veya_id.strip()
-    
-    # Eğer girdinin içinde youtube link kalıpları varsa ID'yi regex ile ayıkla
     if "youtube.com" in girdi.lower() or "youtu.be" in girdi.lower():
         bulunan = re.findall(r'[a-zA-Z0-9_-]{11}', girdi)
         if bulunan:
             for parca in bulunan:
                 if "youtube" not in parca.lower() and "youtu" not in parca.lower() and "watch" not in parca.lower():
                     return parca
-                    
-    # Eğer doğrudan 11 haneli temiz video kodunu girdiyse (Link değilse)
     if len(girdi) == 11 and not "/" in girdi and not "." in girdi and not "?" in girdi:
         return girdi
-        
     return None
 
 def akilli_yerel_ozetleyici(metin):
@@ -138,9 +133,7 @@ def ytdlp_altyazi_cek(clean_video_id, cerez_yolu):
         'no_warnings': True
     }
     try:
-        # KESİN URL KALIBI: yt-dlp'nin generic modüle düşmesini önlemek için mutlak YouTube linki veriyoruz.
         mutlak_youtube_url = f"https://youtube.com{clean_video_id}"
-        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([mutlak_youtube_url])
             
@@ -168,7 +161,49 @@ def ytdlp_altyazi_cek(clean_video_id, cerez_yolu):
         st.error(f"Sistem Hatası: {str(e)}")
     return None
 
-# Yan Menü Geçmiş Yönetimi
+# --- BAĞIMSIZ MOD MODÜLLERİ (SIFIR GİRİNTİ RİSKİ) ---
+def youtube_modu_calistir():
+    st.subheader("🚀 Sadece Linki Yapıştırın")
+    video_linki = st.text_input("YouTube Linkini veya Video Kodunu Girin:", placeholder="Örn: 1OkydHdhABQ")
+    
+    if st.button("Videoyu Analiz Et ve Özetle", key="yt_islem_butonu"):
+        if not video_linki:
+            st.warning("Lütfen bir link girin!")
+            return
+        
+        v_id = youtube_id_bul_kesin(video_linki)
+        if not v_id:
+            st.error("❌ Geçersiz video kodu! Lütfen tam link veya 11 haneli kodu doğru girin.")
+            return
+            
+        st.info(f"🔍 Sistem: Video Kodu '{v_id}' başarıyla izole edildi. İndirme başlatılıyor...")
+        PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
+        CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
+        
+        metin_to_process = ""
+        with st.spinner("🤖 Altyazılar güvenli motorla çekiliyor..."):
+            if not os.path.exists(CEREZ_YOLU):
+                st.error("⚠️ Kritik Hata: 'www.youtube.com_cookies.txt' dosyası bulunamadı!")
+            else:
+                metin_to_process = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
+        
+        if metin_to_process:
+            metni_ozetle_ve_kaydet(metin_to_process)
+        else:
+            st.error("❌ Altyazı indirilemedi veya video korumalı.")
+
+def metin_modu_calistir():
+    st.subheader("📝 Metni Buraya Yapıştırın")
+    girilen_metin = st.text_area("Özetlenecek Metin:", placeholder="Yazınızı buraya ekleyin...", height=250)
+    
+    if st.button("Metni Analiz Et ve Özetle", key="metin_islem_butonu"):
+        if not girilen_metin.strip():
+            st.warning("Lütfen boş bir metin bırakmayın!")
+        else:
+            with st.spinner("🤖 Metin analiz ediliyor..."):
+                metni_ozetle_ve_kaydet(girilen_metin)
+
+# --- YAN MENÜ GEÇMİŞ YÖNETİMİ ---
 st.sidebar.title("📜 Özet Geçmişiniz")
 gecmis_listesi = veritabani_yukle()
 secilen_eski_ozet = None
@@ -187,7 +222,7 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
         st.sidebar.success("Geçmiş silindi!")
         st.rerun()
 
-# Ana Sayfa Tasarımı
+# --- ANA SAYFA ÇALIŞTIRICI ---
 st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
 st.write("Dış platform bağımlılığı olmayan kararlı sürüm.")
 st.divider()
@@ -201,34 +236,7 @@ else:
     mod_secimi = st.radio("Lütfen Özetleme Modu Seçin:", ["📺 YouTube Videosu Özetle", "📝 Uzun Metin Özetle"], horizontal=True)
     
     if mod_secimi == "📺 YouTube Videosu Özetle":
-        st.subheader("🚀 Sadece Linki Yapıştırın")
-        video_linki = st.text_input("YouTube Linkini veya Video Kodunu Girin:", placeholder="Örn: 1OkydHdhABQ", key="yt_girdi_kutusu")
+        youtube_modu_calistir()
         
-        if st.button("Videoyu Analiz Et ve Özetle"):
-            if not video_linki:
-                st.warning("Lütfen bir link girin!")
-            else:
-                v_id = youtube_id_bul_kesin(video_linki)
-                if not v_id:
-                    st.error("❌ Geçersiz video kodu! Lütfen tam link veya 11 haneli kodu doğru girin.")
-                else:
-                    st.info(f"🔍 Sistem: Video Kodu '{v_id}' başarıyla izole edildi. İndirme başlatılıyor...")
-                    PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
-                    CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
-                    
-                    metin_to_process = ""
-                    with st.spinner("🤖 Altyazılar güvenli motorla çekiliyor..."):
-                        if not os.path.exists(CEREZ_YOLU):
-                            st.error("⚠️ Kritik Hata: 'www.youtube.com_cookies.txt' dosyası bulunamadı!")
-                        else:
-                            metin_to_process = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
-                    
-                    if metin_to_process:
-                        metni_ozetle_ve_kaydet(metin_to_process)
-                    else:
-                        st.error("❌ Altyazı indirilemedi veya video korumalı.")
-                        
     if mod_secimi == "📝 Uzun Metin Özetle":
-        st.subheader("📝 Metni Buraya Yapıştırın")
-        girilen_metin = st.text_area("Özetlenecek Metin:", placeholder="Yazınızı buraya ekleyin...", height=250)
-        if st.button("Metni Analiz Et ve Özetle"):
+        metin_modu_calistir()
