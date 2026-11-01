@@ -99,6 +99,12 @@ def pdf_rapor_uret(tarih, saat, orijinal_metin, ozet_maddeleri):
     buffer.seek(0)
     return buffer
 
+# --- 🧠 HAFIZA YÖNETİMİ (SESSION STATE) ---
+if "aktif_tarih" not in st.session_state: st.session_state.aktif_tarih = None
+if "aktif_saat" not in st.session_state: st.session_state.aktif_saat = None
+if "aktif_metin" not in st.session_state: st.session_state.aktif_metin = None
+if "aktif_ozet" not in st.session_state: st.session_state.aktif_ozet = None
+
 # --- YAN MENÜ (SIDEBAR) ---
 st.sidebar.title("📜 Özet Geçmişiniz")
 gecmis_listesi = veritabani_yukle()
@@ -111,11 +117,19 @@ else:
         buton_basligi = f"⏱️ {g['saat']} - {g['metin'][:25]}..."
         if st.sidebar.button(buton_basligi, key=f"gecmis_{sira}"):
             secilen_eski_ozet = g
+            # Sol menüden geçmişe tıklandığında anlık hafızayı güncelliyoruz
+            st.session_state.aktif_tarih = g['tarih']
+            st.session_state.aktif_saat = g['saat']
+            st.session_state.aktif_metin = g['metin']
+            st.session_state.aktif_ozet = g['ozet']
 
 st.sidebar.divider()
 if st.sidebar.button("🗑️ Geçmişi Temizle"):
     if os.path.exists(VERITABANI_DOSYASI):
         os.remove(VERITABANI_DOSYASI)
+        # Hafızayı tamamen boşalt
+        for key in ["aktif_tarih", "aktif_saat", "aktif_metin", "aktif_ozet"]:
+            st.session_state[key] = None
         st.sidebar.success("Geçmiş silindi!")
         st.rerun()
 
@@ -124,75 +138,64 @@ st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
 st.write("YouTube linklerini veya uzun metinleri saniyeler içinde analiz edin.")
 st.divider()
 
-# Ortak Özet Gösterim Alanı (Hem yeniler hem eskiler için)
-def ozet_ekranini_bas(tarih, saat, metin, ozet):
-    st.success("✅ Yapay Zeka İşlemi Tamamlandı!")
-    st.info(f"📂 **Görüntülenen Özet** ({tarih} - {saat})")
-    pdf_dosyasi = pdf_rapor_uret(tarih, saat, metin, ozet)
-    st.download_button(label="📥 Bu Özeti PDF Olarak İndir", data=pdf_dosyasi, file_name=f"ai_ozet_{saat.replace(':','_')}.pdf", mime="application/pdf")
+# Giriş kutularını ve butonları her zaman gösterelim (SaaS Panel Standardı)
+sekme1, sekme2 = st.tabs(["📺 YouTube Videosu Özetle", "📝 Uzun Metin/Yazı Özetle"])
+
+# TAB 1: YOUTUBE ÖZETLEME
+with sekme1:
+    st.write("💡 *İpucu: Her türlü YouTube linkini veya sadece 11 haneli video kodunu yapıştırabilirsiniz.*")
+    video_linki = st.text_input("YouTube Linki veya 11 Haneli Video Kodu Girin:", placeholder="Örn: ieeOWL5WBY8", key="yt_input")
     
-    st.subheader("🤖 Çıkarılan 5 Madde:")
-    for madde in ozet: st.write(madde)
-    st.subheader("📝 Orijinal Kaynak:")
-    st.caption(metin)
-
-if secilen_eski_ozet:
-    ozet_ekranini_bas(secilen_eski_ozet['tarih'], secilen_eski_ozet['saat'], secilen_eski_ozet['metin'], secilen_eski_ozet['ozet'])
-    if st.button("➕ Yeni Özet Oluşturma Ekranına Dön"): st.rerun()
-
-else:
-    sekme1, sekme2 = st.tabs(["📺 YouTube Videosu Özetle", "📝 Uzun Metin/Yazı Özetle"])
-    metin_to_process = ""
-    yapay_zeka_ozeti = []
-
-    # TAB 1: YOUTUBE ÖZETLEME
-    with sekme1:
-        st.write("💡 *İpucu: Her türlü YouTube linkini veya sadece 11 haneli video kodunu yapıştırabilirsiniz.*")
-        video_linki = st.text_input("YouTube Linki veya 11 Haneli Video Kodu Girin:", placeholder="Örn: ieeOWL5WBY8")
-        
-        if st.button("Videoyu Analiz Et ve Özetle", key="yt_btn"):
-            if not video_linki:
-                st.warning("Lütfen bir giriş yapın!")
+    if st.button("Videoyu Analiz Et ve Özetle", key="yt_btn"):
+        if not video_linki:
+            st.warning("Lütfen bir giriş yapın!")
+        else:
+            video_id = youtube_id_bul_kesin(video_linki)
+            if not video_id:
+                st.error("❌ Girdiğiniz metinden bir YouTube video kodu çıkartılamadı.")
             else:
-                video_id = youtube_id_bul_kesin(video_linki)
-                if not video_id:
-                    st.error("❌ Girdiğiniz metinden bir YouTube video kodu çıkartılamadı.")
-                else:
-                    st.info(f"🔍 Sistem: Video Kodu '{video_id}' olarak başarıyla yakalandı. Analiz başlıyor...")
-                    
-                    with st.spinner("Altyazılar taranıyor ve yapay zeka analiz ediyor..."):
-                        try:
-                            konusma_verisi = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
-                            metin_to_process = " ".join([parca['text'] for parca in konusma_verisi])
-                            yapay_zeka_ozeti = yapay_zeka_ozet_motoru(metin_to_process)
-                        except:
-                            metin_to_process = f"YouTube Videosu (ID: {video_id}) - Otomatik video tahmin motoru kullanıldı."
-                            yapay_zeka_ozeti = yapay_zeka_ozet_motoru(metin_to_process, video_id=video_id)
+                with st.spinner("Altyazılar taranıyor ve yapay zeka analiz ediyor..."):
+                    try:
+                        konusma_verisi = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
+                        metin_to_process = " ".join([parca['text'] for parca in konusma_verisi])
+                        yapay_zeka_ozeti = yapay_zeka_ozet_motoru(metin_to_process)
+                    except:
+                        metin_to_process = f"YouTube Videosu (ID: {video_id}) - Otomatik video tahmin motoru kullanıldı."
+                        yapay_zeka_ozeti = yapay_zeka_ozet_motoru(metin_to_process, video_id=video_id)
+                
+                # Hafızayı yeni video verileriyle tazele
+                simdi = datetime.now()
+                st.session_state.aktif_tarih = simdi.strftime("%d.%m.%Y")
+                st.session_state.aktif_saat = simdi.strftime("%H:%M")
+                st.session_state.aktif_metin = metin_to_process
+                st.session_state.aktif_ozet = yapay_zeka_ozeti
+                
+                # Veritabanına kaydet
+                veritabani_kaydet({"tarih": st.session_state.aktif_tarih, "saat": st.session_state.aktif_saat, "metin": st.session_state.aktif_metin, "ozet": st.session_state.aktif_ozet})
+                st.rerun()
 
-    # TAB 2: METİN ÖZETLEME
-    with sekme2:
-        uzun_metin = st.text_area("Özetlenecek Metni Buraya Yapıştırın:", placeholder="Yazınızı buraya girin...", height=150)
-        if st.button("Metni Analiz Et ve Özetle", key="txt_btn"):
-            if not uzun_metin or len(uzun_metin.strip()) < 10:
-                st.warning("Lütfen yeterli uzunlukta bir metin girin!")
-            else:
-                metin_to_process = uzun_metin
-                yapay_zeka_ozeti = yapay_zeka_ozet_motoru(metin_to_process)
+# TAB 2: METİN ÖZETLEME
+with sekme2:
+    uzun_metin = st.text_area("Özetlenecek Metni Buraya Yapıştırın:", placeholder="Yazınızı buraya girin...", height=150, key="txt_input")
+    if st.button("Metni Analiz Et ve Özetle", key="txt_btn"):
+        if not uzun_metin or len(uzun_metin.strip()) < 10:
+            st.warning("Lütfen yeterli uzunlukta bir metin girin!")
+        else:
+            with st.spinner("Metin yapay zeka tarafından işleniyor..."):
+                yapay_zeka_ozeti = yapay_zeka_ozet_motoru(uzun_metin)
+            
+            simdi = datetime.now()
+            st.session_state.aktif_tarih = simdi.strftime("%d.%m.%Y")
+            st.session_state.aktif_saat = simdi.strftime("%H:%M")
+            st.session_state.aktif_metin = uzun_metin
+            st.session_state.aktif_ozet = yapay_zeka_ozeti
+            
+            veritabani_kaydet({"tarih": st.session_state.aktif_tarih, "saat": st.session_state.aktif_saat, "metin": st.session_state.aktif_metin, "ozet": st.session_state.aktif_ozet})
+            st.rerun()
 
-    # CANLI ÖZET GÖSTERME VE KAYDETME ALANI
-    if metin_to_process and yapay_zeka_ozeti:
-        simdi = datetime.now()
-        tarih_sn = simdi.strftime("%d.%m.%Y")
-        saat_sn = simdi.strftime("%H:%M")
-        
-        yeni_kayit = {
-            "tarih": tarih_sn,
-            "saat": saat_sn,
-            "metin": metin_to_process,
-            "ozet": yapay_zeka_ozeti
-        }
-        veritabani_kaydet(yeni_kayit)
-        
-        # Sayfayı sıfırlamak yerine özeti anında ekrana basıyoruz
-        st.divider()
-        ozet_ekranini_bas(tarih_sn, saat_sn, metin_to_process, yapay_zeka_ozeti)
+# --- 📺 BULUNAN ÖZETİ EKRANA BASMA ALANI ---
+if st.session_state.aktif_ozet:
+    st.divider()
+    st.success("✅ İşlem Başarıyla Tamamlandı!")
+    
+    # Rapor indirme butonu
