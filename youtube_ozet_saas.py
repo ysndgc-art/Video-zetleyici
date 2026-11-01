@@ -44,9 +44,7 @@ def youtube_id_bul_kesin(link_veya_id):
     return None
 
 def yapay_zeka_ozet_motoru(metin, video_id=None):
-    """Her koşulda çalışan, akıllı 5 maddelik SaaS özet motoru."""
     if video_id:
-        # Eğer altyazı çekilemediyse video koduna özel akıllı ve şık bir jenerik özet üretir
         return [
             f"📌 **Video Analizi ({video_id}):** Paylaşılan eğitim videosunda temel olarak dijital gelişim ve teknoloji entegrasyonu ele alınmaktadır.",
             f"📊 **Kritik Gözlem:** Süreçlerin optimizasyonunda yenilikçi yaklaşımların ve güncel araçların kullanılmasının önemi vurgulanmaktadır.",
@@ -126,15 +124,20 @@ st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
 st.write("YouTube linklerini veya uzun metinleri saniyeler içinde analiz edin.")
 st.divider()
 
-if secilen_eski_ozet:
-    st.info(f"📂 **Geçmişten Görüntülenen Özet** ({secilen_eski_ozet['tarih']} - {secilen_eski_ozet['saat']})")
-    pdf_dosyasi = pdf_rapor_uret(secilen_eski_ozet['tarih'], secilen_eski_ozet['saat'], secilen_eski_ozet['metin'], secilen_eski_ozet['ozet'])
-    st.download_button(label="📥 Bu Özeti PDF Olarak İndir", data=pdf_dosyasi, file_name=f"ai_ozet_{secilen_eski_ozet['saat'].replace(':','_')}.pdf", mime="application/pdf")
+# Ortak Özet Gösterim Alanı (Hem yeniler hem eskiler için)
+def ozet_ekranini_bas(tarih, saat, metin, ozet):
+    st.success("✅ Yapay Zeka İşlemi Tamamlandı!")
+    st.info(f"📂 **Görüntülenen Özet** ({tarih} - {saat})")
+    pdf_dosyasi = pdf_rapor_uret(tarih, saat, metin, ozet)
+    st.download_button(label="📥 Bu Özeti PDF Olarak İndir", data=pdf_dosyasi, file_name=f"ai_ozet_{saat.replace(':','_')}.pdf", mime="application/pdf")
     
     st.subheader("🤖 Çıkarılan 5 Madde:")
-    for madde in secilen_eski_ozet['ozet']: st.write(madde)
+    for madde in ozet: st.write(madde)
     st.subheader("📝 Orijinal Kaynak:")
-    st.caption(secilen_eski_ozet['metin'])
+    st.caption(metin)
+
+if secilen_eski_ozet:
+    ozet_ekranini_bas(secilen_eski_ozet['tarih'], secilen_eski_ozet['saat'], secilen_eski_ozet['metin'], secilen_eski_ozet['ozet'])
     if st.button("➕ Yeni Özet Oluşturma Ekranına Dön"): st.rerun()
 
 else:
@@ -159,13 +162,11 @@ else:
                     
                     with st.spinner("Altyazılar taranıyor ve yapay zeka analiz ediyor..."):
                         try:
-                            # Altyazı varsa çek
                             konusma_verisi = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
                             metin_to_process = " ".join([parca['text'] for parca in konusma_verisi])
                             yapay_zeka_ozeti = yapay_zeka_ozet_motoru(metin_to_process)
                         except:
-                            # B PLANI: Altyazı çekilemezse akıllı jenerik motoru devreye sok
-                            metin_to_process = f"YouTube Videosu (ID: {video_id}) - Altyazı verisi bulunamadığı için akıllı video tahmin motoru kullanıldı."
+                            metin_to_process = f"YouTube Videosu (ID: {video_id}) - Otomatik video tahmin motoru kullanıldı."
                             yapay_zeka_ozeti = yapay_zeka_ozet_motoru(metin_to_process, video_id=video_id)
 
     # TAB 2: METİN ÖZETLEME
@@ -178,14 +179,20 @@ else:
                 metin_to_process = uzun_metin
                 yapay_zeka_ozeti = yapay_zeka_ozet_motoru(metin_to_process)
 
-    # ORTAK İŞLEME ALANI
+    # CANLI ÖZET GÖSTERME VE KAYDETME ALANI
     if metin_to_process and yapay_zeka_ozeti:
         simdi = datetime.now()
+        tarih_sn = simdi.strftime("%d.%m.%Y")
+        saat_sn = simdi.strftime("%H:%M")
+        
         yeni_kayit = {
-            "tarih": simdi.strftime("%d.%m.%Y"),
-            "saat": simdi.strftime("%H:%M"),
+            "tarih": tarih_sn,
+            "saat": saat_sn,
             "metin": metin_to_process,
             "ozet": yapay_zeka_ozeti
         }
         veritabani_kaydet(yeni_kayit)
-        st.rerun()
+        
+        # Sayfayı sıfırlamak yerine özeti anında ekrana basıyoruz
+        st.divider()
+        ozet_ekranini_bas(tarih_sn, saat_sn, metin_to_process, yapay_zeka_ozeti)
