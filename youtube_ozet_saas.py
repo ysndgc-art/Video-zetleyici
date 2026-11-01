@@ -19,7 +19,6 @@ def veritabani_yukle():
 
 def veritabani_kaydet(yeni_ozet):
     gecmis = veritabani_yukle()
-    # Mükerrer kayıt kontrolü
     if not any(g['metin'][:30] == yeni_ozet['metin'][:30] for g in gecmis):
         gecmis.insert(0, yeni_ozet)
         with open(VERITABANI_DOSYASI, "w", encoding="utf-8") as f:
@@ -36,39 +35,78 @@ def youtube_id_bul_kesin(link):
                 return parca
     return girdi
 
-# --- 🧠 LOKAL AKILLI ANALİZ MOTORU (SIFIR BAĞLANTI HATASI) ---
+# --- 🧠 YAPILANDIRILMIŞ TÜRKÇE YEREL ANALİZ MOTORU ---
 def yerel_mantik_ozetleyici(metin):
-    # Metni cümlelere ayır
-    cumleler = [c.strip() for c in re.split(r'(?<=[.!?])\s+', metin.strip()) if c.strip()]
-    if len(cumleler) <= 5:
-        return cumleler
+    # 1. TEMİZLİK: [Müzik], [Gülüşme], (Music) gibi tüm parantez içi gürültüleri temizle
+    temiz_metin = re.sub(r'\[.*?\]', '', metin)
+    temiz_metin = re.sub(r'\(.*?\)', '', temiz_metin)
+    
+    # Fazla boşlukları erit
+    temiz_metin = re.sub(r'\s+', ' ', temiz_metin).strip()
+    
+    # 2. YAPAY NOKTALAMA: Eğer YouTube otomatik altyazısıysa ve hiç nokta yoksa, akıllı bölme yap
+    if "." not in temiz_metin or temiz_metin.count(".") < 3:
+        ham_kelimeler = temiz_metin.split()
+        parçalanmış_cumleler = []
+        # Her 15 kelimede bir mantıklı bir cümle sınırı varsay ve nokta koy
+        for i in range(0, len(ham_kelimeler), 15):
+            grup = ham_kelimeler[i:i+15]
+            parçalanmış_cumleler.append(" ".join(grup) + ".")
+        cumleler = parçalanmış_cumleler
+    else:
+        cumleler = [c.strip() for c in re.split(r'(?<=[.!?])\s+', temiz_metin) if c.strip()]
 
-    # Kelime frekanslarını hesapla (Etkisiz kelimeleri filtrele)
-    kelimeler = re.findall(r'\w+', metin.lower())
+    if len(cumleler) <= 5:
+        return [c for c in cumleler if len(c.split()) > 3]
+
+    # 3. GELİŞMİŞ TÜRKÇE STOP-WORDS FİLTRESİ
+    kelimeler = re.findall(r'\w+', temiz_metin.lower())
     durma_kelimeleri = {
         "ve", "veya", "ama", "fakat", "ile", "bir", "bu", "şu", "o", "da", "de", 
-        "için", "gibi", "çok", "en", "daha", "olan", "olarak", "ki", "yani", "böyle"
+        "için", "gibi", "çok", "en", "daha", "olan", "olarak", "ki", "yani", "böyle",
+        "şey", "şeyler", "her", "zaten", "bunu", "buna", "bunda", "bunlar", "onlar",
+        "ben", "sen", "biz", "siz", "Evet", "hayır", "yok", "var", "göre", "kadar",
+        "müzik", "gülüşme", "alkış", "ses", "video", "videoda", "merhaba", "arkadaşlar"
     }
     
     frekanslar = {}
     for k in kelimeler:
-        if k not in durma_kelimeleri and len(k) > 2:
+        if k not in durma_kelimeleri and len(k) > 3: # Kısa anlamsız ekleri de ele (len > 3)
             frekanslar[k] = frekanslar.get(k, 0) + 1
 
-    # Cümleleri içerdikleri önemli kelimelerin ağırlığına göre puanla
+    # 4. CÜMLE PUANLAMA VE SEÇİM
     cumle_puanlari = {}
     for idx, cumle in enumerate(cumleler):
         puan = 0
-        for kelime in re.findall(r'\w+', cumle.lower()):
+        kelime_listesi = re.findall(r'\w+', cumle.lower())
+        # Cümlenin çok kısa veya çok uzun (çorba) olmasını engellemek için ideal uzunluk cezası/ödülü
+        if len(kelime_listesi) < 5 or len(kelime_listesi) > 25:
+            continue
+            
+        for kelime in kelime_listesi:
             if kelime in frekanslar:
                 puan += frekanslar[kelime]
         cumle_puanlari[idx] = puan
 
-    # En yüksek puan alan 5 cümleyi seç ve kronolojik sıraya diz
+    if not cumle_puanlari:
+        return [c for c in cumleler[:5]]
+
+    # En yüksek anahtar kelime yoğunluğuna sahip 5 cümleyi kronolojik sırada getir
     en_iyi_indeksler = sorted(cumle_puanlari, key=cumle_puanlari.get, reverse=True)[:5]
     en_iyi_indeksler.sort()
 
-    return [cumleler[idx] for idx in en_iyi_indeksler]
+    sonuc = []
+    emojiler = ["📌", "📊", "💡", "⚙️", "🎯"]
+    for i, idx in enumerate(en_iyi_indeksler):
+        ham_cumle = cumleler[idx].strip()
+        # İlk harfi büyüt, sonuna nokta eklemesini garanti et
+        if ham_cumle:
+            ham_cumle = ham_cumle[0].upper() + ham_cumle[1:]
+            if not ham_cumle.endswith("."):
+                ham_cumle += "."
+            sonuc.append(f"{emojiler[i]} {ham_cumle}")
+            
+    return sonuc
 
 def ytdlp_altyazi_cek(video_id, cerez_yolu):
     safe_id = str(video_id).strip()
@@ -116,12 +154,12 @@ st.sidebar.title("📜 Özet Geçmişiniz")
 gecmis = veritabani_yukle()
 if gecmis:
     for sira, g in enumerate(gecmis[:10]):
-        # Kayıt listesini gösterir
         if st.sidebar.button(f"⏱️ {g.get('saat','')} - {g.get('metin','')[:15]}...", key=f"hist_{sira}"):
             st.session_state["aktif_ozet"] = g
 else:
     st.sidebar.info("Henüz geçmiş analiz bulunmuyor.")
 
+st.sidebar.divider()
 if st.sidebar.button("🗑️ Geçmişi Temizle"):
     if os.path.exists(VERITABANI_DOSYASI):
         os.remove(VERITABANI_DOSYASI)
@@ -133,14 +171,13 @@ st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
 st.write("Dış Platform Bağımlılığı Olmayan Kararlı Sürüm")
 st.divider()
 
-# Geçmişten bir kayıt seçildiyse ekranı güncelle
 if "aktif_ozet" in st.session_state:
     st.info("📂 **Geçmiş Özet Görüntüleniyor**")
     g = st.session_state["aktif_ozet"]
     st.success(f"✅ Analiz Tarihi: {g['tarih']} - {g['saat']}")
     st.subheader("📊 Çıkarılan Kritik Maddeler:")
     for madde in g['ozet']:
-        st.write(f"🎯 {madde}")
+        st.write(madde)
     st.subheader("📝 Orijinal Altyazı Kaynağı:")
     st.caption(g['metin'])
     if st.button("➕ Yeni Özet Ekranına Dön"):
@@ -167,14 +204,14 @@ else:
                 tarih_str = simdi.strftime("%d.%m.%Y")
                 saat_str = simdi.strftime("%H:%M:%S")
                 
-                veritabani_kaydet({"tarih": tarih_str, "saat": saat_str, "metin": metin, "ozet": ozet_maddeleri})
+                veritabani_kaydet({"tarih": tarih_str, "saat": safe_id if 'safe_id' in locals() else saat_str, "metin": metin, "ozet": ozet_maddeleri})
                 
                 st.success("✅ Analiz Tamamlandı!")
-                st.subheader("📊 Mantıksal Analiz Sonucu (En Kritik 5 Cümle):")
+                st.subheader("📊 Yapılandırılmış Mantıksal Maddeler:")
                 for madde in ozet_maddeleri:
-                    st.write(f"🎯 {madde}")
+                    st.write(madde)
                     
-                st.subheader("📝 Çekilen Ham Altyazı Metni:")
+                st.subheader("📝 Filtrelenmiş Ham Altyazı Metni:")
                 st.caption(metin)
             else:
                 st.error("Altyazı indirilemedi. Videonun altyazı içerdiğinden emin olun.")
@@ -191,4 +228,4 @@ else:
                 st.success("✅ İşlem Başarılı!")
                 st.subheader("📊 Özet Maddeleri:")
                 for madde in ozet_maddeleri:
-                    st.write(f"🎯 {madde}")
+                    st.write(madde)
