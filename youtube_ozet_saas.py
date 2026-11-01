@@ -8,6 +8,10 @@ import yt_dlp
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
 
+# Güvenli Başlangıç Durumu Tanımlama (En Başta)
+if "aktif_ozet" not in st.session_state:
+    st.session_state["aktif_ozet"] = None
+
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
 GUNLUK_UCRETSIZ_LIMIT = 10
 
@@ -259,10 +263,6 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
 st.write("Gelişmiş İstatistik Paneli ve PDF / Markdown / TXT Dışa Aktarma Destekli Sürüm")
 st.divider()
-
-# Güvenli Başlangıç Durumu Tanımlama
-if "aktif_ozet" not in st.session_state:
-    st.session_state["aktif_ozet"] = None
 
 # Blokaj Yapmayan Akıllı Görünüm Kontrolü
 if st.session_state["aktif_ozet"] is not None:
