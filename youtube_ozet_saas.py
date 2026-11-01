@@ -31,16 +31,29 @@ def veritabani_kaydet(yeni_ozet):
             json.dump(gecmis, f, ensure_ascii=False, indent=4)
 
 def youtube_id_bul_kesin(link_veya_id):
+    # Harf büyüklüğünü korumak için kesinlikle .lower() yapmıyoruz!
     girdi = link_veya_id.strip()
-    if "youtube.com" in girdi.lower() or "youtu.be" in girdi.lower():
-        bulunan = re.findall(r'[a-zA-Z0-9_-]{11}', girdi)
-        if bulunan:
-            for parca in bulunan:
-                if "youtube" not in parca.lower() and "youtu" not in parca.lower() and "watch" not in parca.lower():
-                    return parca
+    
+    # Doğrudan 11 haneli kod girildiyse koru ve döndür
     if len(girdi) == 11 and not "/" in girdi and not "." in girdi and not "?" in girdi:
         return girdi
-    return None
+        
+    # Link girildiyse harf hassasiyetini koruyarak ayıkla
+    if "watch?v=" in girdi:
+        parcalar = girdi.split("watch?v=")
+        if len(parcalar) > 1:
+            return parcalar[1][:11]
+            
+    if "youtu.be/" in girdi:
+        parcalar = girdi.split("youtu.be/")
+        if len(parcalar) > 1:
+            return parcalar[1][:11]
+            
+    bulunan = re.findall(r'[a-zA-Z0-9_-]{11}', girdi)
+    if bulunan:
+        return bulunan[0]
+        
+    return girdi
 
 def akilli_yerel_ozetleyici(metin):
     cumleler = re.split(r'(?<=[.!?])\s+', metin.strip())
@@ -122,25 +135,31 @@ def metni_ozetle_ve_kaydet(kaynak_metin):
     ozeti_ekrana_yazdir(tarih, saat, kaynak_metin, ozet_sonuc)
 
 def ytdlp_altyazi_cek(clean_video_id, cerez_yolu):
+    # Video ID'sinin harf yapısını mutlak olarak koru
+    safe_id = str(clean_video_id).strip()
+    
     ydl_opts = {
         'writesubtitles': True,
         'writeautomaticsub': True,
         'subtitleslangs': ['tr', 'en', 'auto'],
         'skip_download': True,
         'cookiefile': cerez_yolu,
-        'outtmpl': f"sub_{clean_video_id}",
+        'outtmpl': f"sub_{safe_id}",
         'quiet': True,
-        'no_warnings': True
+        'no_warnings': True,
+        'prefer_insecure': False
     }
     try:
-        mutlak_youtube_url = f"https://youtube.com{clean_video_id}"
+        # DOĞRUDAN RECMİ STANDART LİNK ENJEKSİYONU
+        mutlak_url = f"https://youtube.com{safe_id}"
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([mutlak_youtube_url])
+            ydl.download([mutlak_url])
             
         altyazi_metni = ""
         bulunan_dosya = None
         for dosya in os.listdir("."):
-            if dosya.startswith(f"sub_{clean_video_id}") and dosya.endswith(".vtt"):
+            if dosya.startswith(f"sub_{safe_id}") and dosya.endswith(".vtt"):
                 bulunan_dosya = dosya
                 break
         if bulunan_dosya and os.path.exists(bulunan_dosya):
@@ -161,7 +180,7 @@ def ytdlp_altyazi_cek(clean_video_id, cerez_yolu):
         st.error(f"Sistem Hatası: {str(e)}")
     return None
 
-# --- BAĞIMSIZ MOD MODÜLLERİ (SIFIR GİRİNTİ RİSKİ) ---
+# --- BAĞIMSIZ MOD MODÜLLERİ ---
 def youtube_modu_calistir():
     st.subheader("🚀 Sadece Linki Yapıştırın")
     video_linki = st.text_input("YouTube Linkini veya Video Kodunu Girin:", placeholder="Örn: 1OkydHdhABQ")
@@ -172,8 +191,8 @@ def youtube_modu_calistir():
             return
         
         v_id = youtube_id_bul_kesin(video_linki)
-        if not v_id:
-            st.error("❌ Geçersiz video kodu! Lütfen tam link veya 11 haneli kodu doğru girin.")
+        if not v_id or len(v_id) != 11:
+            st.error("❌ Geçersiz video kodu! Lütfen 11 haneli kodu (Büyük/Küçük harflere dikkat ederek) doğru girin.")
             return
             
         st.info(f"🔍 Sistem: Video Kodu '{v_id}' başarıyla izole edildi. İndirme başlatılıyor...")
@@ -190,7 +209,7 @@ def youtube_modu_calistir():
         if metin_to_process:
             metni_ozetle_ve_kaydet(metin_to_process)
         else:
-            st.error("❌ Altyazı indirilemedi veya video korumalı.")
+            st.error("❌ Altyazı indirilemedi veya videoda aktif/otomatik altyazı bulunmuyor.")
 
 def metin_modu_calistir():
     st.subheader("📝 Metni Buraya Yapıştırın")
@@ -229,14 +248,3 @@ st.divider()
 
 if secilen_eski_ozet:
     st.info("📂 **Geçmiş Özet Görüntüleniyor**")
-    ozeti_ekrana_yazdir(secilen_eski_ozet['tarih'], secilen_eski_ozet['saat'], secilen_eski_ozet['metin'], secilen_eski_ozet['ozet'])
-    if st.button("➕ Yeni Özet Ekranına Dön"):
-        st.rerun()
-else:
-    mod_secimi = st.radio("Lütfen Özetleme Modu Seçin:", ["📺 YouTube Videosu Özetle", "📝 Uzun Metin Özetle"], horizontal=True)
-    
-    if mod_secimi == "📺 YouTube Videosu Özetle":
-        youtube_modu_calistir()
-        
-    if mod_secimi == "📝 Uzun Metin Özetle":
-        metin_modu_calistir()
