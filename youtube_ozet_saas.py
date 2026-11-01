@@ -37,12 +37,14 @@ def veritabani_kaydet(yeni_ozet):
 
 def youtube_id_bul_kesin(link_veya_id):
     girdi = link_veya_id.strip()
-    if len(girdi) == 11 and not "/" in girdi and not "." in girdi:
+    # Eğer doğrudan 11 haneli temiz video kodunu girdiyse direkt döndür
+    if len(girdi) == 11 and not "/" in girdi and not "." in girdi and not "?" in girdi:
         return girdi
+    # Eğer link yapıştırdıysa içindeki 11 haneli kodu ayıkla
     bulunan = re.findall(r'[a-zA-Z0-9_-]{11}', girdi)
     if bulunan:
         for parca in bulunan:
-            if "youtube" not in parca.lower() and "youtu" not in parca.lower():
+            if "youtube" not in parca.lower() and "youtu" not in parca.lower() and "watch" not in parca.lower():
                 return parca
     return None
 
@@ -121,9 +123,7 @@ def metni_ozetle_ve_kaydet(kaynak_metin):
     tarih = simdi.strftime("%d.%m.%Y")
     saat = simdi.strftime("%H:%M:%S")
     ozet_sonuc = akilli_yerel_ozetleyici(kaynak_metin)
-    yeni_kayit = {"tarih": tarih, "saat": saat, "metin": gateway_metin if 'gateway_metin' in locals() else kaynak_metin, "ozet": ozet_sonuc}
-    # Küçük bir düzeltme: veritabanı kayıt objesinde orijinal kaynak metni saklıyoruz
-    yeni_kayit["metin"] = kaynak_metin
+    yeni_kayit = {"tarih": tarih, "saat": saat, "metin": kaynak_metin, "ozet": ozet_sonuc}
     veritabani_kaydet(yeni_kayit)
     ozeti_ekrana_yazdir(tarih, saat, kaynak_metin, ozet_sonuc)
 
@@ -139,9 +139,10 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
         'no_warnings': True
     }
     try:
-        # KESİN ÇÖZÜM URL DÜZELTMESİ:
-        # yt-dlp'nin adresi yanlış birleştirmesini önlemek için doğrudan video URL'sini veriyoruz
-        video_url = f"https://youtube.com{video_id}"
+        # KESİN URL FORMATI DOĞRULAMASI
+        # video_id ne olursa olsun her koşulda tam url yapısını zorunlu kılıyoruz.
+        video_url = f"https://www.youtube.com/watch?v={str(video_id)}"
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([video_url])
             
@@ -203,7 +204,7 @@ else:
     
     if mod_secimi == "📺 YouTube Videosu Özetle":
         st.subheader("🚀 Sadece Linki Yapıştırın")
-        video_linki = st.text_input("YouTube Linkini veya Video Kodunu Girin:", placeholder="Örn: 1okydhdhabq")
+        video_linki = st.text_input("YouTube Linkini veya Video Kodunu Girin:", placeholder="Örn: 1OkydHdhABQ")
         if st.button("Videoyu Analiz Et ve Özetle"):
             v_id = youtube_id_bul_kesin(video_linki)
             if not video_linki:
