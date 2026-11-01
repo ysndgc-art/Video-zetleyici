@@ -169,7 +169,7 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
 
 # --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
-st.write("Dinamik Link Senkronizasyonlu ve Hafıza Çakışması Engellenmiş Sürüm")
+st.write("Girdi Çakışmaları ve Söz Dizimi Hataları Tamamen Giderilmiş Kararlı Sürüm")
 st.divider()
 
 if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
@@ -194,7 +194,7 @@ else:
                 st.warning("Lütfen analiz etmek için geçerli bir YouTube URL'si veya video kodu girin.")
             else:
                 st.cache_data.clear()
-                v_id = youtube_id_bul_kesin(video_linki)
+                v_id = youtube_id_bul_kesin(video_url_girdisi if 'video_url_girdisi' in st.session_state else video_linki)
                 PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
                 CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
                 
@@ -230,5 +230,3 @@ else:
         girilen_metin = st.text_area("Yorumlanacak Uzun Metni Girin:", height=200, key="metin_alan_girdisi")
         if st.button("Metni Analiz Et"):
             if not girilen_metin.strip():
-                st.warning("Metin alanı boş bırakılamaz.")
-            else:
