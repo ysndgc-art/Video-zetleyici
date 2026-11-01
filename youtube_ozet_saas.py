@@ -275,4 +275,3 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
     t_fmt, m_fmt, h_fmt = rapor_formatlarini_uret(g.get('tarih',''), g.get('saat',''), g.get('ozet', []))
     
     col1, col2, col3 = st.columns(3)
-    with col1:
