@@ -9,8 +9,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 import io
-import urllib.request
-import xml.etree.ElementTree as ET
+import yt_dlp
 
 # Web Sayfası Tasarımı
 st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
@@ -45,59 +44,61 @@ def youtube_id_bul_kesin(link_veya_id):
                 return parca
     return None
 
-# --- 🌐 YEREL ALTYAZI ÇEKİCİ (KÜTÜPHANESİZ GÜVENLİ MOTOR) ---
-def yerel_altyazi_cek(video_id, cerez_yolu):
+# --- 🌐 GÜÇLÜ ALTYAZI ÇEKİCİ (YT-DLP MOTORU) ---
+def ytdlp_altyazi_cek(video_id, cerez_yolu):
+    # Çıktı dosya adını belirle
+    output_vtt = f"sub_{video_id}.tr.vtt"
+    
+    # Eski kalıntıları temizle
+    if os.path.exists(output_vtt):
+        os.remove(output_vtt)
+        
+    ydl_opts = {
+        'writesubtitles': True,
+        'writesubtitles': True,
+        'subtitleslangs': ['tr', 'en', 'auto'], # Türkçe, İngilizce veya Otomatik oluşturulanlar
+        'skip_download': True,
+        'cookiefile': cerez_yolu,
+        'outtmpl': f"sub_{video_id}",
+        'quiet': True,
+        'no_warnings': True
+    }
+    
     try:
-        # Netscape çerez formatından cookie string üretme
-        cookie_list = []
-        if os.path.exists(cerez_yolu):
-            with open(cerez_yolu, "r", encoding="utf-8") as f:
-                for line in f:
-                    if not line.startswith("#") and line.strip():
-                        parts = line.strip().split("\t")
-                        if len(parts) >= 7:
-                            cookie_list.append(f"{parts[5]}={parts[6]}")
-        
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Cookie": "; ".join(cookie_list)
-        }
-        
-        # Video sayfasını iste
-        req = urllib.request.Request(f"https://youtube.com{video_id}", headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as response:
-            html = response.read().decode('utf-8')
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([f"https://youtube.com{video_id}"])
             
-        # Altyazı URL'ini HTML içinden ayıkla
-        match = re.search(r'"captionTracks":\s*\[(.*?)\]', html)
-        if not match:
-            return None
-            
-        tracks_json = json.loads(f"[{match.group(1)}]")
+        # İndirilen altyazı dosyasını bul (uzantısı .tr.vtt, .en.vtt vb. olabilir)
+        altyazi_metni = ""
+        bulunan_dosya = None
         
-        # Türkçe veya İngilizce parça seç
-        track_url = None
-        for track in tracks_json:
-            if track.get("languageCode") in ["tr", "en"]:
-                track_url = track.get("baseUrl")
+        for dosya in os.listdir("."):
+            if dosya.startswith(f"sub_{video_id}") and dosya.endswith(".vtt"):
+                bulunan_dosya = dosya
                 break
-        if not track_url:
-            track_url = tracks_json[0].get("baseUrl")
+                
+        if bulunan_dosya and os.path.exists(bulunan_dosya):
+            with open(bulunan_dosya, "r", encoding="utf-8") as f:
+                vtt_content = f.read()
+                
+            # VTT formatındaki zaman kodlarını ve meta verileri temizle, sadece düz metni al
+            lines = vtt_content.split("\n")
+            temiz_satirlar = []
+            for line in lines:
+                if "-->" not in line and line.strip() and not line.strip().isdigit() and "WEBVTT" not in line and "Kind:" not in line and "Language:" not in line:
+                    # Tekrarlayan kelimeleri/satırları temizle (VTT karakteristiği)
+                    clean_line = re.sub(r'<[^>]*>', '', line).strip()
+                    if clean_line and (not temiz_satirlar or temiz_satirlar[-1] != clean_line):
+                        temiz_satirlar.append(clean_line)
+                        
+            altyazi_metni = " ".join(temiz_satirlar)
+            os.remove(bulunan_dosya) # İş bitince geçici dosyayı sil
+            return altyazi_metni
             
-        if not track_url:
-            return None
-            
-        # XML formatındaki altyazıyı indir ve düz metne çevir
-        req_track = urllib.request.Request(track_url, headers={"User-Agent": headers["User-Agent"]})
-        with urllib.request.urlopen(req_track, timeout=10) as resp_track:
-            xml_data = resp_track.read()
-            
-        root = ET.fromstring(xml_data)
-        text_parts = [elem.text for elem in root.findall('.//text') if elem.text]
-        return " ".join(text_parts)
     except Exception as e:
-        st.error(f"Altyazı Çözümleme Hatası: {str(e)}")
-        return None
+        st.error(f"yt-dlp Motor Hatası: {str(e)}")
+        
+    return None
 
 # --- 🧠 AKILLI ÖZET MOTORU ---
 def akilli_yerel_ozetleyici(metin):
@@ -242,11 +243,11 @@ else:
                 if not video_id:
                     st.error("❌ Geçersiz video kodu!")
                 else:
-                    st.info(f"🔍 Sistem: Video Kodu '{video_id}' başarıyla doğrulandı. Bağımsız altyazı motoru başlatılıyor...")
+                    st.info(f"🔍 Sistem: Video Kodu '{video_id}' başarıyla doğrulandı. yt-dlp güvenli motoru başlatılıyor...")
                     
                     PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
                     CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
                     
-                    with st.spinner("🤖 Güvenlik duvarları çerez entegrasyonuyla aşılıyor..."):
+                    with st.spinner("🤖 Güvenlik duvarları gerçek zamanlı simülasyonla aşılıyor..."):
                         if not os.path.exists(CEREZ_YOLU):
                             st.error(f"⚠️ Kritik Hata: Klasörde 'www.youtube.com_cookies.txt' dosyası bulunamadı!")
