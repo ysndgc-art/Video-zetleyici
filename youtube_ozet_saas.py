@@ -187,7 +187,6 @@ else:
     madde_limiti = st.select_slider("Çıkarılacak Kritik Madde Sayısı:", options=[5, 10, 15], value=5)
     
     if mod == "📺 YouTube Videosu":
-        # Sabit başlangıç değeri tamamen kaldırılarak hafıza kilitlenmesi engellendi
         video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="Örn: https://youtube.com...", key="video_url_girdisi")
         
         if st.button("Videoyu Analiz Et"):
@@ -231,3 +230,5 @@ else:
         girilen_metin = st.text_area("Yorumlanacak Uzun Metni Girin:", height=200, key="metin_alan_girdisi")
         if st.button("Metni Analiz Et"):
             if not girilen_metin.strip():
+                st.warning("Metin alanı boş bırakılamaz.")
+            else:
