@@ -16,8 +16,6 @@ def veritabani_yukle():
         if os.path.exists(VERITABANI_DOSYASI):
             with open(VERITABANI_DOSYASI, "r", encoding="utf-8") as f:
                 veri = json.load(f)
-                # --- AKILLI FORMAT DÖNÜŞTÜRÜCÜ (MIGRATION) ---
-                # Eğer eski veritabanı düz bir liste ise, yeni sözlük yapısına otomatik çevirir
                 if isinstance(veri, list):
                     return {"gecmis": veri, "kota": {}}
                 if isinstance(veri, dict) and "gecmis" in veri:
@@ -262,6 +260,7 @@ st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
 st.write("Gelişmiş İstatistik Paneli ve PDF / Markdown / TXT Dışa Aktarma Destekli Sürüm")
 st.divider()
 
+# Blokaj Yapmayan Akıllı Görünüm Kontrolü
 if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
     st.info("📂 **Geçmiş Analiz Görüntüleniyor**")
     g = st.session_state["aktif_ozet"]
@@ -276,3 +275,4 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
     t_fmt, m_fmt, h_fmt = rapor_formatlarini_uret(g.get('tarih',''), g.get('saat',''), g.get('ozet', []))
     
     col1, col2, col3 = st.columns(3)
+    with col1:
