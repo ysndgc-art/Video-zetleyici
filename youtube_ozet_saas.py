@@ -8,7 +8,7 @@ import yt_dlp
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
 
-# Güvenli Başlangıç Durumu Tanımlama (En Başta)
+# Güvenli başlangıç durumları
 if "aktif_ozet" not in st.session_state:
     st.session_state["aktif_ozet"] = None
 
@@ -39,13 +39,10 @@ def kota_kontrol_ve_guncelle():
     veri = veritabani_yukle()
     if not isinstance(veri, dict) or "kota" not in veri:
         veri = {"gecmis": [], "kota": {}}
-        
     bugun = datetime.now().strftime("%d.%m.%Y")
     mevcut_kota = veri["kota"].get(bugun, 0)
-    
     if mevcut_kota >= GUNLUK_UCRETSIZ_LIMIT:
         return False, mevcut_kota
-        
     veri["kota"][bugun] = mevcut_kota + 1
     veritabani_kaydet(veri)
     return True, mevcut_kota + 1
@@ -54,7 +51,6 @@ def gecmis_ekle(yeni_ozet):
     veri = veritabani_yukle()
     if not isinstance(veri, dict) or "gecmis" not in veri:
         veri = {"gecmis": [], "kota": {}}
-        
     if not any(g.get('metin', '')[:30] == yeni_ozet['metin'][:30] for g in veri["gecmis"]):
         veri["gecmis"].insert(0, yeni_ozet)
         veritabani_kaydet(veri)
@@ -70,7 +66,6 @@ def youtube_id_bul_kesin(link):
                 return parca
     return girdi
 
-# --- 🧠 %100 YEREL GELİŞMİŞ ANALİZ MOTORU ---
 def yerel_mantik_ozetleyici(metin, madde_sayisi=5, dil="tr"):
     temiz_metin = re.sub(r'\[.*?\]', '', metin)
     temiz_metin = re.sub(r'\(.*?\)', '', temiz_metin)
@@ -133,7 +128,6 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5, dil="tr"):
                 if not ham_cumle.endswith("."):
                     ham_cumle += "."
                 sonuc.append(ham_cumle)
-            
     return sonuc
 
 def ytdlp_altyazi_cek(video_id, cerez_yolu):
@@ -152,13 +146,11 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([safe_id])
-        
         bulunan_dosya = None
         for dosya in os.listdir("."):
             if dosya.startswith(f"sub_{safe_id}") and dosya.endswith(".vtt"):
                 bulunan_dosya = dosya
                 break
-                
         if bulunan_dosya and os.path.exists(bulunan_dosya):
             indirilen_dil = "en" if ".en." in bulunan_dosya else "tr"
             with open(bulunan_dosya, "r", encoding="utf-8") as f:
@@ -170,16 +162,13 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
                     clean_line = re.sub(r'<[^>]*>', '', line).strip()
                     if clean_line and (not temiz_satirlar or temiz_satirlar[-1] != clean_line):
                         temiz_satirlar.append(clean_line)
-                        
             try: os.remove(bulunan_dosya)
             except: pass
-            
             return " ".join(temiz_satirlar), indirilen_dil
     except:
         pass
     return None, "tr"
 
-# --- 📥 EVRENSEL DIŞA AKTARMA FORMATLARI MOTORU ---
 def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
     txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {tarih} - {saat}\n"
     if baslik_url:
@@ -198,32 +187,16 @@ def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
 
     html_cikisi = f"""
     <html>
-    <head>
-        <meta charset="utf-8">
-        <style>
-            body {{ font-family: Arial, sans-serif; padding: 30px; color: #333; }}
-            h1 {{ color: #ff4b4b; border-bottom: 2px solid #eee; padding-bottom: 10px; }}
-            .meta {{ color: #666; margin-bottom: 20px; font-size: 14px; }}
-            ul {{ line-height: 1.6; }}
-            li {{ margin-bottom: 12px; font-size: 16px; }}
-        </style>
-    </head>
+    <head><meta charset="utf-8"></head>
     <body>
         <h1>📺 AI Akıllı Analiz Raporu</h1>
-        <div class="meta">
-            <strong>Tarih:</strong> {tarih} - {saat}<br>
-            {"<strong>Kaynak:</strong> " + baslik_url if baslik_url else ""}
-        </div>
+        <p><strong>Tarih:</strong> {tarih} - {saat}</p>
         <h3>🔑 Çıkarılan Kritik Maddeler</h3>
         <ul>
     """
     for m in maddeler:
         html_cikisi += f"<li>{m}</li>"
-    html_cikisi += """
-        </ul>
-    </body>
-    </html>
-    """
+    html_cikisi += "</ul></body></html>"
     return txt_cikisi, md_cikisi, html_cikisi
 
 # --- SIDEBAR ---
@@ -240,31 +213,22 @@ else:
     st.sidebar.info("Henüz geçmiş analiz bulunmuyor.")
 
 st.sidebar.divider()
-
-# KOTA GÖSTERGE PANELİ
 bugun_str = datetime.now().strftime("%d.%m.%Y")
 bugunku_kullanim = kota_havuzu.get(bugun_str, 0)
 st.sidebar.subheader("📊 Günlük Kullanım Kotası")
 st.sidebar.write(f"Bugün Kullanılan: **{bugunku_kullanim} / {GUNLUK_UCRETSIZ_LIMIT}**")
-kalan_hak = GUNLUK_UCRETSIZ_LIMIT - bugunku_kullanim
-if kalan_hak > 0:
-    st.sidebar.success(f"🔓 {kalan_hak} adet ücretsiz analiz hakkınız kaldı.")
-else:
-    st.sidebar.error("⚠️ Günlük ücretsiz limitiniz doldu! Ek analizler ücrete tabidir.")
 
 if st.sidebar.button("🗑️ Geçmişi Temizle"):
     if os.path.exists(VERITABANI_DOSYASI):
         try: os.remove(VERITABANI_DOSYASI)
         except: pass
-    st.sidebar.success("Geçmiş silindi!")
     st.rerun()
 
 # --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
-st.write("Gelişmiş İstatistik Paneli ve PDF / Markdown / TXT Dışa Aktarma Destekli Sürüm")
+st.write("Gelişmiş İstatistik Paneli ve Kolay Dışa Aktarma Sistemi")
 st.divider()
 
-# Blokaj Yapmayan Akıllı Görünüm Kontrolü
 if st.session_state["aktif_ozet"] is not None:
     st.info("📂 **Geçmiş Analiz Görüntüleniyor**")
     g = st.session_state["aktif_ozet"]
@@ -274,8 +238,26 @@ if st.session_state["aktif_ozet"] is not None:
         st.write(m)
         
     st.divider()
-    st.subheader("📥 Raporu Farklı Formatlarda İndir")
-    
     t_fmt, m_fmt, h_fmt = rapor_formatlarini_uret(g.get('tarih',''), g.get('saat',''), g.get('ozet', []))
     
-    col1, col2, col3 = st.columns(3)
+    st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain")
+    st.download_button(label="📥 Markdown Olarak İndir", data=m_fmt.encode('utf-8'), file_name="analiz.md", mime="text/markdown")
+    st.download_button(label="📥 HTML Raporu Al", data=h_fmt.encode('utf-8'), file_name="analiz.html", mime="text/html")
+        
+    if st.button("➕ Yeni Analiz Ekranına Dön"):
+        st.session_state["aktif_ozet"] = None
+        st.rerun()
+else:
+    mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
+    madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
+
+    if mod == "📺 YouTube Videosu":
+        video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="Örn: https://youtube.com...", key="video_url_girdisi")
+        
+        if st.button("Videoyu Analiz Et"):
+            if not video_linki.strip():
+                st.warning("Lütfen bir YouTube linki girin.")
+            else:
+                izin_verildi, guncel_sayac = kota_kontrol_ve_guncelle()
+                if not izin_verildi:
+                    st.error("❌ Günlük ücretsiz limite ulaştınız.")
