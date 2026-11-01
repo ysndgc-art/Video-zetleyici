@@ -54,8 +54,8 @@ def youtube_id_bul_kesin(link_veya_id):
 # --- 🔥 GERÇEK YAPAY ZEKA ÖZET MOTORU ---
 def gemini_ile_ozetle(girdi_metni):
     try:
-        # Model adının başına 'models/' ekleyerek tam yolunu belirtiyoruz
-        model = genai.GenerativeModel("models/gemini-1.5-flash")
+        # En kararlı ve evrensel model olan gemini-pro sürümünü kullanıyoruz
+        model = genai.GenerativeModel("gemini-pro")
         
         talimat = (
             "Sana verilen metni veya konuşma dökümünü incele. "
