@@ -14,16 +14,20 @@ import yt_dlp
 # Web Sayfası Tasarımı
 st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
 
+# --- OTURUM HAFIZASI (SESSION STATE) İLKLENDİRME ---
+if "islem_basladi" not in st.session_state:
+    st.session_state.islem_basladi = False
+if "video_id" not in st.session_state:
+    st.session_state.video_id = None
+
 # --- VERİBATANI (JSON) FONKSİYONLARI ---
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
 
 def veritabani_yukle():
     if os.path.exists(VERITABANI_DOSYASI):
         with open(VERITABANI_DOSYASI, "r", encoding="utf-8") as f:
-            try: 
-                return json.load(f)
-            except: 
-                return []
+            try: return json.load(f)
+            except: return []
     return []
 
 def veritabani_kaydet(yeni_ozet):
@@ -46,29 +50,22 @@ def youtube_id_bul_kesin(link_veya_id):
 
 # --- 🌐 GÜÇLÜ ALTYAZI ÇEKİCİ (YT-DLP MOTORU) ---
 def ytdlp_altyazi_cek(video_id, cerez_yolu):
-    # Çıktı dosya adını belirle
-    output_vtt = f"sub_{video_id}.tr.vtt"
-    
-    # Eski kalıntıları temizle
-    if os.path.exists(output_vtt):
-        os.remove(output_vtt)
-        
     ydl_opts = {
         'writesubtitles': True,
-        'writesubtitles': True,
-        'subtitleslangs': ['tr', 'en', 'auto'], # Türkçe, İngilizce veya Otomatik oluşturulanlar
+        'writeautomaticsub': True,
+        'subtitleslangs': ['tr', 'en', 'auto'],
         'skip_download': True,
         'cookiefile': cerez_yolu,
         'outtmpl': f"sub_{video_id}",
         'quiet': True,
-        'no_warnings': True
+        'no_warnings': True,
+        'external_downloader_args': ['--timeout', '15'] # 15 saniyede cevap gelmezse düşür
     }
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([f"https://youtube.com{video_id}"])
             
-        # İndirilen altyazı dosyasını bul (uzantısı .tr.vtt, .en.vtt vb. olabilir)
         altyazi_metni = ""
         bulunan_dosya = None
         
@@ -81,22 +78,21 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
             with open(bulunan_dosya, "r", encoding="utf-8") as f:
                 vtt_content = f.read()
                 
-            # VTT formatındaki zaman kodlarını ve meta verileri temizle, sadece düz metni al
             lines = vtt_content.split("\n")
             temiz_satirlar = []
             for line in lines:
                 if "-->" not in line and line.strip() and not line.strip().isdigit() and "WEBVTT" not in line and "Kind:" not in line and "Language:" not in line:
-                    # Tekrarlayan kelimeleri/satırları temizle (VTT karakteristiği)
                     clean_line = re.sub(r'<[^>]*>', '', line).strip()
                     if clean_line and (not temiz_satirlar or temiz_satirlar[-1] != clean_line):
                         temiz_satirlar.append(clean_line)
                         
             altyazi_metni = " ".join(temiz_satirlar)
-            os.remove(bulunan_dosya) # İş bitince geçici dosyayı sil
+            try: os.remove(bulunan_dosya)
+            except: pass
             return altyazi_metni
             
     except Exception as e:
-        st.error(f"yt-dlp Motor Hatası: {str(e)}")
+        st.error(f"Sistem Hatası: {str(e)}")
         
     return None
 
@@ -179,7 +175,6 @@ def ozeti_ekrana_yazdir(tarih, saat, metin, ozet):
     st.subheader("📝 Orijinal Kaynak:")
     st.caption(metin)
 
-# --- 🚀 İŞLEME VE KAYDETME FONKSİYONLARI ---
 def metni_ozetle_ve_kaydet(kaynak_metin):
     simdi = datetime.now()
     tarih = simdi.strftime("%d.%m.%Y")
@@ -239,15 +234,23 @@ else:
             if not video_linki:
                 st.warning("Lütfen bir link girin!")
             else:
-                video_id = youtube_id_bul_kesin(video_linki)
-                if not video_id:
+                v_id = youtube_id_bul_kesin(video_linki)
+                if not v_id:
                     st.error("❌ Geçersiz video kodu!")
                 else:
-                    st.info(f"🔍 Sistem: Video Kodu '{video_id}' başarıyla doğrulandı. yt-dlp güvenli motoru başlatılıyor...")
-                    
-                    PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
-                    CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
-                    
-                    with st.spinner("🤖 Güvenlik duvarları gerçek zamanlı simülasyonla aşılıyor..."):
-                        if not os.path.exists(CEREZ_YOLU):
-                            st.error(f"⚠️ Kritik Hata: Klasörde 'www.youtube.com_cookies.txt' dosyası bulunamadı!")
+                    st.session_state.video_id = v_id
+                    st.session_state.islem_basladi = True
+                    st.rerun()
+
+        # İşlem tetiklendiğinde butondan bağımsız çalışan alan
+        if st.session_state.islem_basladi and st.session_state.video_id:
+            st.info(f"🔍 Sistem: Video Kodu '{st.session_state.video_id}' doğrulandı. İşlem başlatılıyor...")
+            
+            PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
+            CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
+            
+            metin_to_process = ""
+            with st.spinner("🤖 Güvenlik duvarları oturum hafızasıyla aşılıyor, altyazılar indiriliyor..."):
+                if not os.path.exists(CEREZ_YOLU):
+                    st.error(f"⚠️ Kritik Hata: Klasörde 'www.youtube.com_cookies.txt' dosyası bulunamadı!")
+                else:
