@@ -25,13 +25,22 @@ def veritabani_kaydet(yeni_ozet):
 
 def youtube_id_bul_kesin(link):
     girdi = str(link).strip()
-    if len(girdi) == 11:
+    
+    # Eğer doğrudan 11 haneli temiz kod girildiyse direkt döndür (Harfleri bozma)
+    if len(girdi) == 11 and not "/" in girdi and not "." in girdi and not "?" in girdi:
         return girdi
-    bulunan = re.findall(r'[a-zA-Z0-9_-]{11}', girdi)
-    if bulunan:
-        for parca in bulunan:
-            if parca.lower() not in ["youtube", "youtu", "watch"]:
-                return parca
+        
+    # Link girildiyse içindeki 11 haneli benzersiz video kodunu yakala
+    if "watch?v=" in girdi:
+        parca = girdi.split("watch?v=")[1]
+        return parca[:11]
+    if "youtu.be/" in girdi:
+        parca = girdi.split("youtu.be/")[1]
+        return parca[:11]
+    if "embed/" in girdi:
+        parca = girdi.split("embed/")[1]
+        return parca[:11]
+        
     return girdi
 
 def akilli_yerel_ozetleyici(metin):
@@ -41,23 +50,29 @@ def akilli_yerel_ozetleyici(metin):
     return cumleler[:5]
 
 def ytdlp_altyazi_cek(video_id, cerez_yolu):
+    safe_id = str(video_id).strip()
+    
     ydl_opts = {
         'writesubtitles': True,
         'writeautomaticsub': True,
         'subtitleslangs': ['tr', 'en', 'auto'],
         'skip_download': True,
         'cookiefile': cerez_yolu,
-        'outtmpl': f"sub_{video_id}",
-        'quiet': True
+        'outtmpl': f"sub_{safe_id}",
+        'quiet': True,
+        'no_warnings': True
     }
     try:
-        mutlak_url = f"https://youtube.com{video_id}"
+        # KESİN ÇÖZÜM: yt-dlp'nin extractor mekanizmasını ve adres birleştirme bug'ını 
+        # tamamen bypass etmek için doğrudan standart embed (gömülü) url'sini veriyoruz.
+        mutlak_embed_url = f"https://youtube.com{safe_id}"
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([mutlak_url])
+            ydl.download([mutlak_embed_url])
         
         bulunan_dosya = None
         for dosya in os.listdir("."):
-            if dosya.startswith(f"sub_{video_id}") and dosya.endswith(".vtt"):
+            if dosya.startswith(f"sub_{safe_id}") and dosya.endswith(".vtt"):
                 bulunan_dosya = dosya
                 break
                 
@@ -81,12 +96,12 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
 # --- SIDEBAR ---
 st.sidebar.title("📜 Özet Geçmişiniz")
 gecmis = veritabani_yukle()
-for sira, g in enumerate(gecmis[:10]):
+for g in gecmis[:10]:
     st.sidebar.write(f"⏱️ {g.get('saat','')} - {g.get('metin','')[:15]}...")
 
 # --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
-st.write("Kararlı Temiz Sürüm")
+st.write("Harf Duyarlılığı ve URL Altyapısı Düzeltilmiş Sürüm")
 
 mod = st.radio("Mod Seçin:", ["📺 YouTube", "📝 Metin"], horizontal=True)
 
@@ -109,7 +124,7 @@ if mod == "📺 YouTube":
             for m in ozet:
                 st.write(f"📌 {m}")
         else:
-            st.error("Altyazı bulunamadı.")
+            st.error("Altyazı indirilemedi. Lütfen videonun herkese açık olduğundan ve altyazı içerdiğinden emin olun.")
 
 if mod == "📝 Metin":
     girilen_metin = st.text_area("Metin girin:")
