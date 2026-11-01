@@ -197,13 +197,12 @@ else:
                             st.error(f"⚠️ Kritik Hata: Klasörde 'www.youtube.com_cookies.txt' dosyası bulunamadı!")
                         else:
                             try:
-                                altyazi_listesi = YouTubeTranscriptApi.list_transcripts(video_id, cookies=CEREZ_YOLU)
-                                try:
-                                    altyazi = altyazi_listesi.find_transcript(['tr', 'en'])
-                                except:
-                                    altyazi = altyazi_listesi.find_transcript([]).translate('tr')
-                                
-                                konusma_verisi = altyazi.fetch()
+                                # Eski sürümlerle uyumlu, çerez destekli get_transcript yapısı
+                                konusma_verisi = YouTubeTranscriptApi.get_transcript(
+                                    video_id, 
+                                    languages=['tr', 'en'], 
+                                    cookies=CEREZ_YOLU
+                                )
                                 metin_to_process = " ".join([parca['text'] for parca in konusma_verisi])
                             except Exception as e:
                                 st.error(f"Altyazı API Hatası: {str(e)}")
