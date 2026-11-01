@@ -37,11 +37,11 @@ def youtube_id_bul_kesin(link):
 
 # --- 🌐 %100 YEREL (OFFLINE) SÖZLÜKSEL ÇEVİRİ MOTORU ---
 def yerel_sozluk_cevirisi(madde_listesi):
-    # Dış API'ler kilitlendiğinde Streamlit'in kendi hafızasından çalışan akıllı sözlük
+    # Sözlük yapısı tamamen düzeltildi ve iki nokta hatası giderildi
     sozluk = {
         "the": "", "and": "ve", "to": "-e", "of": "ait", "a": "bir", "in": "içinde", "is": "dır", "that": "şu",
         "it": "o", "was": "idi", "for": "için", "on": "üzerinde", "are": "dırlar", "as": "olarak", "with": "ile",
-        "this": "bu", "they", "onlar", "but": "ama", "what": "ne", "from": "-den", "your": "senin", "how": "nasıl",
+        "this": "bu", "they": "onlar", "but": "ama", "what": "ne", "from": "-den", "your": "senin", "how": "nasıl",
         "video": "video", "channel": "kanal", "subscribe": "abone ol", "like": "beğen", "music": "müzik",
         "important": "önemli", "first": "ilk", "second": "ikinci", "step": "adım", "code": "kod", "system": "sistem",
         "project": "proje", "software": "yazılım", "problem": "sorun", "error": "hata", "success": "başarı",
@@ -58,16 +58,15 @@ def yerel_sozluk_cevirisi(madde_listesi):
         yeni_cumle = []
         for k in kelimeler:
             temiz_k = re.sub(r'[^\w]', '', k).lower()
-            # Sözlükte karşılığı varsa değiştir, yoksa orijinal kelimeyi koru
             if temiz_k in sozluk and sozluk[temiz_k] != "":
-                # Noktalama işaretini koruyarak ekle
                 ek = k.replace(re.sub(r'[^\w]', '', k), sozluk[temiz_k])
                 yeni_cumle.append(ek)
             else:
                 yeni_cumle.append(k)
                 
         cumle_metni = " ".join(yeni_cumle).strip()
-        cumle_metni = cumle_metni.upper() + cumle_metni[1:]
+        if cumle_metni:
+            cumle_metni = cumle_metni[0].upper() + cumle_metni[1:]
         cevirilmis_maddeler.append(f"{emojiler[i]} {cumle_metni}")
         
     return cevirilmis_maddeler
@@ -130,7 +129,7 @@ def yerel_mantik_ozetleyici(metin, dil="tr"):
     for idx in en_iyi_indeksler:
         ham_cumle = cumleler[idx].strip()
         if ham_cumle:
-            ham_cumle = ham_cumle.upper() + ham_cumle[1:]
+            ham_cumle = ham_cumle[0].upper() + ham_cumle[1:]
             if not ham_cumle.endswith("."):
                 ham_cumle += "."
             sonuc.append(ham_cumle)
@@ -196,7 +195,7 @@ def youtube_modu_calistir():
             st.error("Altyazı indirilemedi. Videonun altyazı içerdiğinden emin olun.")
             return
             
-        with st.spinner("🤖 2. Adım: Kritik noktalar hesaplanıyor ve optimize ediliyor..."):
+        with st.spinner("🤖 2. Adım: Kritik noktalar hesaplanıyor..."):
             ham_maddeler = yerel_mantik_ozetleyici(metin, dil=altyazi_dili)
             if altyazi_dili == "en":
                 st.info("🌐 İngilizce içerik saptandı, hibrit güvenli çeviri devreye giriyor...")
@@ -238,3 +237,8 @@ st.sidebar.title("📜 Özet Geçmişiniz")
 gecmis = veritabani_yukle()
 if gecmis:
     for sira, g in enumerate(gecmis[:10]):
+        if st.sidebar.button(f"⏱️ {g.get('saat','')} - {g.get('metin','')[:15]}...", key=f"hist_{sira}"):
+            st.session_state["aktif_ozet"] = g
+else:
+    st.sidebar.info("Henüz geçmiş analiz bulunmuyor.")
+
