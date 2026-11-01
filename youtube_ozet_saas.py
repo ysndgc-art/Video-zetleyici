@@ -23,7 +23,8 @@ def veritabani_yukle():
             if isinstance(veri, list):
                 return {"gecmis": veri}
             if isinstance(veri, dict) and "gecmis" in veri:
-                return veri
+                if isinstance(veri["gecmis"], list):
+                    return veri
     except:
         pass
     return {"gecmis": []}
@@ -197,7 +198,7 @@ def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
 st.sidebar.title("📜 Analiz Geçmişiniz")
 veri_havuzu = veritabani_yukle()
 gecmis_listesi = veri_havuzu.get("gecmis", [])
-if gecmis_listesi:
+if isinstance(gecmis_listesi, list) and gecmis_listesi:
     for sira, g in enumerate(gecmis_listesi[:10]):
         if st.sidebar.button(f"⏱️ {g.get('saat','')} - {g.get('metin','')[:15]}...", key=f"hist_{sira}"):
             st.session_state["aktif_ozet"] = g
