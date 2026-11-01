@@ -3,7 +3,7 @@ import json
 import os
 import time
 from datetime import datetime
-from youtube_transcript_api import YouTubeTranscriptApi
+import youtube_transcript_api
 import re
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
@@ -197,8 +197,8 @@ else:
                             st.error(f"⚠️ Kritik Hata: Klasörde 'www.youtube.com_cookies.txt' dosyası bulunamadı!")
                         else:
                             try:
-                                # Eski sürümlerle uyumlu, çerez destekli get_transcript yapısı
-                                konusma_verisi = YouTubeTranscriptApi.get_transcript(
+                                # Modül üzerinden doğrudan çağrı (En güvenli ve esnek çağırma yöntemi)
+                                konusma_verisi = youtube_transcript_api.YouTubeTranscriptApi.get_transcript(
                                     video_id, 
                                     languages=['tr', 'en'], 
                                     cookies=CEREZ_YOLU
@@ -210,7 +210,7 @@ else:
                     if metin_to_process:
                         metni_ozetle_ve_kaydet(metin_to_process)
                     else:
-                        st.error("❌ YouTube bu videonun dış sunuculardan indirilmesini engelledmiş veya altyazı bulunmuyor.")
+                        st.error("❌ YouTube bu videonun dış sunuculardan indirilmesini engelledi veya altyazı bulunmuyor.")
 
     # TAB 2: METİN ÖZETLEME
     with sekme2:
