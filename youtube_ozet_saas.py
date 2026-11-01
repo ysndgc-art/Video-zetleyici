@@ -11,7 +11,7 @@ from reportlab.lib import colors
 import io
 import yt_dlp
 
-# 1. SAYFA AYARI VE OTURUM HAFIZASI
+# Sayfa Yapılandırması
 st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
 
 if "video_id" not in st.session_state:
@@ -19,7 +19,6 @@ if "video_id" not in st.session_state:
 if "islem_basladi" not in st.session_state:
     st.session_state.islem_basladi = False
 
-# 2. VERİTABANI MOTORU
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
 
 def veritabani_yukle():
@@ -47,7 +46,6 @@ def youtube_id_bul_kesin(link_veya_id):
                 return parca
     return None
 
-# 3. YEREL ÖZETLEME VE PDF ALTYAPISI
 def akilli_yerel_ozetleyici(metin):
     cumleler = re.split(r'(?<=[.!?])\s+', metin.strip())
     if len(cumleler) <= 5:
@@ -127,7 +125,6 @@ def metni_ozetle_ve_kaydet(kaynak_metin):
     veritabani_kaydet(yeni_kayit)
     ozeti_ekrana_yazdir(tarih, saat, kaynak_metin, ozet_sonuc)
 
-# 4. YT-DLP ALTYAZI ÇEKİCİ MOTOR
 def ytdlp_altyazi_cek(video_id, cerez_yolu):
     ydl_opts = {
         'writesubtitles': True,
@@ -166,7 +163,7 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
         st.error(f"Sistem Hatası: {str(e)}")
     return None
 
-# 5. YAN MENÜ (SIDEBAR)
+# Yan Menü Gecmiş Yönetimi
 st.sidebar.title("📜 Özet Geçmişiniz")
 gecmis_listesi = veritabani_yukle()
 secilen_eski_ozet = None
@@ -185,7 +182,7 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
         st.sidebar.success("Geçmiş silindi!")
         st.rerun()
 
-# 6. ANA SAYFA ARAYÜZÜ
+# Ana Sayfa Tasarımı
 st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
 st.write("Kararlı ve hatasız çalışan düzleştirilmiş yeni sürüm.")
 st.divider()
@@ -196,33 +193,31 @@ if secilen_eski_ozet:
     if st.button("➕ Yeni Özet Ekranına Dön"):
         st.rerun()
 else:
-    # SEKMELER (TABS) YAPISI
-    sekme1, sekme2 = st.tabs(["📺 YouTube Videosu Özetle", "📝 Uzun Metin Özetle"])
+    mod_secimi = st.radio("Lütfen Özetleme Modu Seçin:", ["📺 YouTube Videosu Özetle", "📝 Uzun Metin Özetle"], horizontal=True)
     
-    with sekme1:
+    if mod_secimi == "📺 YouTube Videosu Özetle":
         st.subheader("🚀 Sadece Linki Yapıştırın")
-        video_linki = st.text_input("YouTube Linkini veya Video Kodunu Girin:", placeholder="Örn: kqtD5dpn9C8", key="yt_input")
-        if st.button("Videoyu Analiz Et ve Özetle", key="yt_btn"):
+        video_linki = st.text_input("YouTube Linkini veya Video Kodunu Girin:", placeholder="Örn: kqtD5dpn9C8")
+        if st.button("Videoyu Analiz Et ve Özetle"):
+            v_id = youtube_id_bul_kesin(video_linki)
             if not video_linki:
                 st.warning("Lütfen bir link girin!")
+            elif not v_id:
+                st.error("❌ Geçersiz video kodu!")
             else:
-                v_id = youtube_id_bul_nesin(video_linki)
-                if not v_id:
-                    st.error("❌ Geçersiz video kodu!")
-                else:
-                    st.session_state.video_id = v_id
-                    st.session_state.islem_basladi = True
-                    st.rerun()
-                    
+                st.session_state.video_id = v_id
+                st.session_state.islem_basladi = True
+                st.rerun()
+                
         if st.session_state.islem_basladi and st.session_state.video_id:
             st.info(f"🔍 Sistem: Video Kodu '{st.session_state.video_id}' doğrulandı.")
             PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
             CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
             
+            metin_to_process = ""
             with st.spinner("🤖 Altyazılar güvenli motorla çekiliyor..."):
                 if not os.path.exists(CEREZ_YOLU):
                     st.error("⚠️ Kritik Hata: 'www.youtube.com_cookies.txt' dosyası bulunamadı!")
-                    metin_to_process = ""
                 else:
                     metin_to_process = ytdlp_altyazi_cek(st.session_state.video_id, CEREZ_YOLU)
             
@@ -234,10 +229,12 @@ else:
             else:
                 st.error("❌ Altyazı indirilemedi veya video korumalı.")
                 
-    with sekme2:
+    if mod_secimi == "📝 Uzun Metin Özetle":
         st.subheader("📝 Metni Buraya Yapıştırın")
         girilen_metin = st.text_area("Özetlenecek Metin:", placeholder="Yazınızı buraya ekleyin...", height=250)
-        if st.button("Metni Analiz Et ve Özetle", key="text_btn"):
+        if st.button("Metni Analiz Et ve Özetle"):
             if not girilen_metin.strip():
                 st.warning("Lütfen boş bir metin bırakmayın!")
             else:
+                with st.spinner("🤖 Metin analiz ediliyor..."):
+                    metni_ozetle_ve_kaydet(girilen_metin)
