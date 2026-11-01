@@ -26,8 +26,10 @@ VERITABANI_DOSYASI = "ozet_gecmisi.json"
 def veritabani_yukle():
     if os.path.exists(VERITABANI_DOSYASI):
         with open(VERITABANI_DOSYASI, "r", encoding="utf-8") as f:
-            try: return json.load(f)
-            except: return []
+            try: 
+                return json.load(f)
+            except: 
+                return []
     return []
 
 def veritabani_kaydet(yeni_ozet):
@@ -64,7 +66,6 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # DÜZELTME: Link birleşimine kesin olarak '/' ekledik
             ydl.download([f"https://youtube.com{video_id}"])
             
         altyazi_metni = ""
@@ -88,8 +89,10 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
                         temiz_satirlar.append(clean_line)
                         
             altyazi_metni = " ".join(temiz_satirlar)
-            try: os.remove(bulunan_dosya)
-            except: pass
+            try: 
+                os.remove(bulunan_dosya)
+            except: 
+                pass
             return altyazi_metni
             
     except Exception as e:
