@@ -171,11 +171,61 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
         pass
     return None, "tr"
 
+# --- 📥 EVRENSEL DIŞA AKTARMA FORMATLARI MOTORU ---
+def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
+    # TXT Formati
+    txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {tarih} - {saat}\n"
+    if baslik_url:
+        txt_cikisi += f"Kaynak: {baslik_url}\n"
+    txt_cikisi += "\nKritik Maddeler:\n"
+    for m in maddeler:
+        txt_cikisi += f"{m}\n"
+        
+    # Markdown Formati
+    md_cikisi = f"# 📺 AI Akıllı Analiz Raporu\n\n- **Tarih:** {tarih} - {saat}\n"
+    if baslik_url:
+        md_cikisi += f"- **Kaynak:** [{baslik_url}]({baslik_url})\n"
+    md_cikisi += "\n## 🔑 Çıkarılan Kritik Maddeler\n\n"
+    for m in maddeler:
+        md_cikisi += f"* {m}\n"
+    md_cikisi += "\n---\n*AI Video & Metin Yorumlayıcı SaaS tarafından üretilmiştir.*"
+
+    # HTML/Evrensel Yazdırılabilir PDF Formati (Streamlit için en kararlı yöntem)
+    html_cikisi = f"""
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ font-family: Arial, sans-serif; padding: 30px; color: #333; }}
+            h1 {{ color: #ff4b4b; border-bottom: 2px solid #eee; padding-bottom: 10px; }}
+            .meta {{ color: #666; margin-bottom: 20px; font-size: 14px; }}
+            ul {{ line-height: 1.6; }}
+            li {{ margin-bottom: 12px; font-size: 16px; }}
+        </style>
+    </head>
+    <body>
+        <h1>📺 AI Akıllı Analiz Raporu</h1>
+        <div class="meta">
+            <strong>Tarih:</strong> {tarih} - {saat}<br>
+            {"<strong>Kaynak:</strong> " + baslik_url if baslik_url else ""}
+        </div>
+        <h3>🔑 Çıkarılan Kritik Maddeler</h3>
+        <ul>
+    """
+    for m in maddeler:
+        html_cikisi += f"<li>{m}</li>"
+    html_cikisi += """
+        </ul>
+    </body>
+    </html>
+    """
+    return txt_cikisi, md_cikisi, html_cikisi
+
 # --- SIDEBAR ---
 st.sidebar.title("📜 Analiz Geçmişiniz")
 veri_havuzu = veritabani_yukle()
 gecmis_listesi = veri_havuzu.get("gecmis", []) if isinstance(veri_havuzu, dict) else []
-kota_havuzu = veri_havuzu.get("kota", {}) if isinstance(veri_havuzu, dict) else {}
+kota_havuzu = veri_havuzu.get("kota", {}) if isinstance(veri_havuzu, dict) else []
 
 if gecmis_listesi:
     for sira, g in enumerate(gecmis_listesi[:10]):
@@ -206,7 +256,7 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
 
 # --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
-st.write("Kota Limitli ve PDF/TXT Dışa Aktarma Destekli Ticari Sürüm")
+st.write("Gelişmiş İstatistik Paneli ve PDF / Markdown / TXT Dışa Aktarma Destekli Sürüm")
 st.divider()
 
 if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
@@ -214,43 +264,14 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
     g = st.session_state["aktif_ozet"]
     st.success(f"✅ Analiz Tarihi: {g.get('tarih','')} - {g.get('saat','')}")
     
-    cikis_metni = f"--- AI VIDEO & METIN ANALIZ RAPORU ---\nTarih: {g.get('tarih','')}\n\nÇıkarılan Maddeler:\n"
     for m in g.get('ozet', []): 
         st.write(m)
-        cikis_metni += f"{m}\n"
         
     st.divider()
-    st.download_button(label="📥 Raporu TXT Olarak İndir", data=cikis_metni.encode('utf-8'), file_name=f"analiz_raporu_{g.get('saat','')}.txt", mime="text/plain")
+    st.subheader("📥 Raporu Farklı Formatlarda İndir")
     
-    if st.button("➕ Yeni Analiz Ekranına Dön"):
-        st.session_state["aktif_ozet"] = None
-        st.rerun()
-    st.stop()
-
-mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
-madde_limiti = st.select_slider("Çıkarılacak Kritik Madde Sayısı:", options=[5, 10, 15], value=5)
-
-# --- 📺 YOUTUBE MODU İŞLEMLERİ ---
-if mod == "📺 YouTube Videosu":
-    video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="Örn: https://youtube.com...", key="video_url_girdisi")
+    t_fmt, m_fmt, h_fmt = rapor_formatlarini_uret(g.get('tarih',''), g.get('saat',''), g.get('ozet', []))
     
-    if st.button("Videoyu Analiz Et"):
-        if not video_linki.strip():
-            st.warning("Lütfen analiz etmek için geçerli bir YouTube URL'si veya video kodu girin.")
-        else:
-            # ÖNCE KOTA KONTROLÜ YAPILIYOR
-            izin_verildi, guncel_sayac = kota_kontrol_ve_guncelle()
-            
-            if not izin_verildi:
-                st.error("❌ **Günlük 10 Ücretsiz Video Sınırına Ulaştınız!**")
-                st.info("💡 Devam etmek ve sınırsız analiz paketine geçmek için lütfen **Premium SaaS** planına abone olun. (Ödeme Entegrasyonu Sayfasına Yönlendiriliyorsunuz...)")
-                st.markdown('<button style="background-color:#ff4b4b; color:white; border:none; padding:12px 24px; font-weight:bold; border-radius:6px; cursor:pointer;">💳 Premium Üyeliğe Yükselt ($9.99/Ay)</button>', unsafe_allow_html=True)
-            else:
-                st.cache_data.clear()
-                v_id = youtube_id_bul_kesin(video_linki)
-                PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
-                CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
-                
-                with st.spinner("📥 Yeni videonun altyazıları indiriliyor..."):
-                    metin, altyazi_dili = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
-                    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name=f"analiz_{g.get('saat','')}.txt", mime="text/plain")
