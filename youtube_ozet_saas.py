@@ -172,7 +172,6 @@ st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
 st.write("Sıfır Girinti Riski, Maksimum Kararlılık Yapısı Aktif")
 st.divider()
 
-# Hafıza kilitlenmesini çözen aktif özet yönlendirmesi
 if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
     st.info("📂 **Geçmiş Analiz Görüntüleniyor**")
     g = st.session_state["aktif_ozet"]
@@ -184,7 +183,6 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
         st.rerun()
     st.stop()
 
-# --- SEÇİM BARI VE KONTROLLER ---
 mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
 madde_limiti = st.select_slider("Çıkarılacak Kritik Madde Sayısı:", options=[5, 10, 15], value=5)
 
@@ -238,3 +236,4 @@ if mod == "📝 Uzun Metin":
             st.warning("Metin alanı boş bırakılamaz.")
         else:
             with st.spinner(f"🤖 Süzgeç çalışıyor ({madde_limiti} Madde)..."):
+                ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti, dil="tr")
