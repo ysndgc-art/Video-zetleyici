@@ -176,7 +176,7 @@ else:
                             konusma_verisi = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
                             metin_to_process = " ".join([parca['text'] for parca in konusma_verisi])
                         except:
-                            # 2. DENEME: Ücretsiz Küresel Proxy Sunucuları ile Arkadan Dolaşma
+                            # 2. DENEME: Proxy ile Arkadan Dolaşma
                             ücretsiz_proxiler = [
                                 "http://45.77.53.111:3128",
                                 "http://185.195.20.12:80",
@@ -192,33 +192,38 @@ else:
                                         break
                                 except:
                                     continue
-                    
+                            
+                            # Proxy işlemlerinden sonra çevre değişkenlerini temizle
+                            if "http_proxy" in os.environ: del os.environ["http_proxy"]
+                            if "https_proxy" in os.environ: del os.environ["https_proxy"]
+
+                    # İşleme adımı ve ekrana yazdırma
                     if metin_to_process:
-                        os.environ.pop("http_proxy", None)
-                        os.environ.pop("https_proxy", None)
-                        
-                        with st.spinner("Metin madenciliği motoru özeti çıkartıyor..."):
-                            yapay_zeka_ozeti = akilli_yerel_ozetleyici(metin_to_process)
-                        
                         simdi = datetime.now()
-                        t_sn = simdi.strftime("%d.%m.%Y")
-                        s_sn = simdi.strftime("%H:%M")
-                        veritabani_kaydet({"tarih": t_sn, "saat": s_sn, "metin": metin_to_process, "ozet": yapay_zeka_ozeti})
-                        ozeti_ekrana_yazdir(t_sn, s_sn, metin_to_process, yapay_zeka_ozeti)
+                        tarih = simdi.strftime("%d.%m.%Y")
+                        saat = simdi.strftime("%H:%M:%S")
+                        
+                        ozet_sonuc = akilli_yerel_ozetleyici(metin_to_process)
+                        
+                        yeni_kayit = {
+                            "tarih": tarih,
+                            "saat": saat,
+                            "metin": metin_to_process,
+                            "ozet": ozet_sonuc
+                        }
+                        veritabani_kaydet(yeni_kayit)
+                        ozeti_ekrana_yazdir(tarih, saat, metin_to_process, ozet_sonuc)
                     else:
                         st.error("❌ YouTube bu videonun dış sunuculardan indirilmesini tamamen engellemiş veya videoda aktif bir altyazı bulunmuyor.")
 
     # TAB 2: METİN ÖZETLEME
     with sekme2:
-        uzun_metin = st.text_area("Özetlenecek Metni Buraya Yapıştırın:", placeholder="Yazınızı buraya girin...", height=150, key="txt_input")
-        if st.button("Metni Analiz Et ve Özetle", key="txt_btn"):
-            if not uzun_metin or len(uzun_metin.strip()) < 10:
-                st.warning("Lütfen metin girin!")
+        st.subheader("📝 Elinizdeki Uzun Metni Buraya Yapıştırın")
+        girilen_metin = st.text_area("Özetlenecek Metin:", placeholder="Yazınızı veya makalenizi buraya ekleyin...", height=250)
+        
+        if st.button("Metni Analiz Et ve Özetle", key="text_btn"):
+            if not girilen_metin.strip():
+                st.warning("Lütfen boş bir metin bırakmayın!")
             else:
-                with st.spinner("Metin analiz ediliyor..."):
-                    yapay_zeka_ozeti = akilli_yerel_ozetleyici(uzun_metin)
-                
                 simdi = datetime.now()
-                t_sn = simdi.strftime("%d.%m.%Y")
-                s_sn = simdi.strftime("%H:%M")
-                veritabani_kaydet({"tarih": t_sn, "saat": s_sn, "metin": uzun_metin, "ozet": yapay_zeka_ozeti})
+                tarih = simdi.strftime("%d.%m.%Y")
