@@ -13,7 +13,6 @@ from youtube_transcript_api import YouTubeTranscriptApi
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
 
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
-GUNLUK_UCRETSIZ_LIMIT = 10
 
 def veritabani_yukle():
     try:
@@ -22,12 +21,12 @@ def veritabani_yukle():
             veri = json.load(f)
             f.close()
             if isinstance(veri, list):
-                return {"gecmis": veri, "kota": {}}
+                return {"gecmis": veri}
             if isinstance(veri, dict) and "gecmis" in veri:
                 return veri
     except:
         pass
-    return {"gecmis": [], "kota": {}}
+    return {"gecmis": []}
 
 def veritabani_kaydet(veri):
     try:
@@ -37,22 +36,10 @@ def veritabani_kaydet(veri):
     except:
         pass
 
-def kota_kontrol_ve_guncelle():
-    veri = veritabani_yukle()
-    if not isinstance(veri, dict) or "kota" not in veri:
-        veri = {"gecmis": [], "kota": {}}
-    bugun = datetime.now().strftime("%d.%m.%Y")
-    mevcut_kota = veri["kota"].get(bugun, 0)
-    if mevcut_kota >= GUNLUK_UCRETSIZ_LIMIT:
-        return False, mevcut_kota
-    veri["kota"][bugun] = mevcut_kota + 1
-    veritabani_kaydet(veri)
-    return True, mevcut_kota + 1
-
 def gecmis_ekle(yeni_ozet):
     veri = veritabani_yukle()
     if not isinstance(veri, dict) or "gecmis" not in veri:
-        veri = {"gecmis": [], "kota": {}}
+        veri = {"gecmis": []}
     if not any(g.get('metin', '')[:30] == yeni_ozet['metin'][:30] for g in veri["gecmis"]):
         veri["gecmis"].insert(0, yeni_ozet)
         veritabani_kaydet(veri)
@@ -233,10 +220,15 @@ with sekme1:
         if not video_linki.strip():
             st.warning("Lütfen bir YouTube linki girin.")
         else:
-            izin_verildi, _ = kota_kontrol_ve_guncelle()
-            if not izin_verildi:
-                st.error("❌ Günlük ücretsiz limite ulaştınız.")
+            v_id = youtube_id_bul_kesin(video_linki)
+            PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
+            CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
+            st.write("📥 Koruma duvarları aşılıyor, altyazılar sökülüyor...")
+            metin, altyazi_dili = akilli_altyazi_indirici(v_id, CEREZ_YOLU)
+            if not metin:
+                st.error("YouTube korumaları aşılamadı veya bu videoda altyazı yok. Lütfen video ayarlarından altyazıların aktif olduğunu kontrol edin.")
             else:
-                v_id = youtube_id_bul_kesin(video_linki)
-                PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
-                CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
+                st.write("🤖 Yapay zeka maddeleri çıkarıyor...")
+                ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil=altyazi_dili)
+                ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
+                simdi = datetime.now()
