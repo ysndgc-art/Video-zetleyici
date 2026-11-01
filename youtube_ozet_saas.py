@@ -131,26 +131,20 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5, dil="tr"):
     return sonuc
 
 def saf_html_altyazi_kaziyici(video_id):
-    """Kütüphaneler engellendiğinde HTML içindeki gizli altyazı izlerini süren acil durum motoru"""
     try:
         url = f"https://youtube.com{video_id}"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
         with urllib.request.urlopen(req, timeout=15) as response:
             html = response.read().decode('utf-8')
-        
-        # HTML içindeki player yanıt tablosundan timedtext URL'sini ayıkla
         match = re.search(r'"captionTracks":\s*(\[.*?\])', html)
         if match:
             tracks = json.loads(match.group(1))
-            # Öncelikli olarak Türkçe veya İngilizce altyazı izini bul
             track = next((t for t in tracks if t.get('languageCode') in ['tr', 'en']), tracks[0])
             base_url = track.get('baseUrl')
-            
             if base_url:
                 req_sub = urllib.request.Request(base_url, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req_sub, timeout=10) as sub_res:
                     xml_data = sub_res.read().decode('utf-8')
-                
                 root = ET.fromstring(xml_data)
                 metin_parcalari = [text.text for text in root.findall('.//text') if text.text]
                 if metin_parcalari:
@@ -161,13 +155,9 @@ def saf_html_altyazi_kaziyici(video_id):
 
 def akilli_altyazi_indirici(video_id, cerez_yolu):
     safe_id = str(video_id).strip()
-    
-    # 1. YÖNTEM: Gelişmiş Saf HTML Regex Kazıyıcı (IP Engellerine ve Bot Kalkanlarına Takılmaz)
     metin, dil = saf_html_altyazi_kaziyici(safe_id)
     if metin and metin.strip():
         return metin, dil
-
-    # 2. YÖNTEM: Resmi Altyazı API Servisi
     try:
         altyazi_listesi = YouTubeTranscriptApi.list_transcripts(safe_id)
         try: transcript = altyazi_listesi.find_transcript(['tr', 'en'])
@@ -176,14 +166,11 @@ def akilli_altyazi_indirici(video_id, cerez_yolu):
         metin = " ".join([parca['text'] for parca in veri])
         if metin.strip(): return metin, transcript.language_code
     except: pass
-
-    # 3. YÖNTEM: Son Çare Olarak Klasik yt-dlp
     ydl_opts = {
         'writesubtitles': True, 'writeautomaticsub': True, 'subtitleslangs': ['tr', 'en', 'auto'],
         'skip_download': True, 'cookiefile': cerez_yolu if os.path.exists(cerez_yolu) else None,
         'outtmpl': f"sub_{safe_id}", 'quiet': True, 'no_warnings': True, 'ie_key': 'Youtube',
-        'socket_timeout': 15, 'retries': 2,
-        'extractor_args': {'youtube': {'clients': ['tv', 'android', 'web']}}
+        'socket_timeout': 15, 'retries': 2, 'extractor_args': {'youtube': {'clients': ['tv', 'android', 'web']}}
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([safe_id])
@@ -229,12 +216,22 @@ st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
 st.write("Gelişmiş İstatistik Paneli ve Kolay Dışa Aktarma Sistemi")
 st.divider()
 
-mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
-if mod == "📺 YouTube Videosu":
+# Hataları sıfırlayan Sekme (Tab) Sistemi
+sekme1, sekme2 = st.tabs(["📺 YouTube Videosu", "📝 Uzun Metin"])
+
+with sekme1:
     video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="Örn: https://youtube.com...", key="yt_url_box")
     if st.button("Videoyu Analiz Et", key="yt_btn"):
         if not video_linki.strip():
             st.warning("Lütfen bir YouTube linki girin.")
         else:
+            izin_verildi, _ = kota_kontrol_ve_guncelle()
+            if not izin_verildi:
+                st.error("❌ Günlük ücretsiz limite ulaştınız.")
+            else:
+                v_id = youtube_id_bul_kesin(video_linki)
+                PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
+                CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
+                with st.spinner("📥 Koruma duvarları aşılıyor, altyazılar sökülüyor..."):
