@@ -169,7 +169,7 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
 
 # --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
-st.write("Anlık Girdi Hafızası ve Kararlılık Senkronizasyonu Optimize Edildi")
+st.write("Dinamik Link Senkronizasyonlu ve Hafıza Çakışması Engellenmiş Sürüm")
 st.divider()
 
 if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
@@ -187,48 +187,47 @@ else:
     madde_limiti = st.select_slider("Çıkarılacak Kritik Madde Sayısı:", options=[5, 10, 15], value=5)
     
     if mod == "📺 YouTube Videosu":
-        # Ön belleğe takılmaması için benzersiz key atandı
-        video_linki = st.text_input("YouTube Linki veya Kodu:", value="1OkydHdhABQ", key="video_url_girdisi")
+        # Sabit başlangıç değeri tamamen kaldırılarak hafıza kilitlenmesi engellendi
+        video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="Örn: https://youtube.com...", key="video_url_girdisi")
+        
         if st.button("Videoyu Analiz Et"):
-            # Eski çalıştırma verilerini ve önbelleği tamamen temizle
-            st.cache_data.clear()
-            
-            v_id = youtube_id_bul_kesin(video_linki)
-            PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
-            CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
-            
-            with st.spinner("📥 Yeni videonun altyazıları indiriliyor..."):
-                metin, altyazi_dili = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
-                
-            if not metin:
-                st.error("Altyazı indirilemedi. Videonun altyazı içerdiğinden emin olun veya yeni linki doğru girdiğinizi kontrol edin.")
+            if not video_linki.strip():
+                st.warning("Lütfen analiz etmek için geçerli bir YouTube URL'si veya video kodu girin.")
             else:
-                with st.spinner(f"🤖 Yapay zeka yeni video için {madde_limiti} kritik maddeyi yapılandırıyor..."):
-                    ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil=altyazi_dili)
-                    emojiler = ["📌", "📊", "💡", "⚙️", "🎯", "🚀", "🔑", "💎", "📣", "📝", "🧠", "🔥", "⚡", "🍀", "🎯"]
-                    ozet_maddeleri = [f"{emojiler[i % len(emojiler)]} {m}" for i, m in enumerate(ham_maddeler)]
-                    
-                simdi = datetime.now()
-                veritabani_kaydet({"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri})
+                st.cache_data.clear()
+                v_id = youtube_id_bul_kesin(video_linki)
+                PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
+                CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
                 
-                st.success(f"✅ {madde_limiti} Maddelik Yeni Analiz Başarıyla Tamamlandı!")
-                for madde in ozet_maddeleri:
-                    st.write(madde)
+                with st.spinner("📥 Yeni videonun altyazıları indiriliyor..."):
+                    metin, altyazi_dili = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
                     
-                with st.expander("📝 İşlenen Ham Kaynak Metni Görüntüle"):
-                    st.caption(metin)
+                if not metin:
+                    st.error("Altyazı indirilemedi. Girdiğiniz linkin doğruluğundan ve videonun altyazı içerdiğinden emin olun.")
+                else:
+                    with st.spinner(f"🤖 Yapay zeka yeni girdi için {madde_limiti} kritik maddeyi yapılandırıyor..."):
+                        ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil=altyazi_dili)
+                        emojiler = ["📌", "📊", "💡", "⚙️", "🎯", "🚀", "🔑", "💎", "📣", "📝", "🧠", "🔥", "⚡", "🍀", "🎯"]
+                        ozet_maddeleri = [f"{emojiler[i % len(emojiler)]} {m}" for i, m in enumerate(ham_maddeler)]
+                        tum_maddeler_metin = "\n".join([f"- {m}" for m in ham_maddeler])
+                        
+                    simdi = datetime.now()
+                    veritabani_kaydet({"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri})
                     
+                    st.success(f"✅ {madde_limiti} Maddelik Yeni Analiz Başarıyla Tamamlandı!")
+                    for madde in ozet_maddeleri:
+                        st.write(madde)
+                        
+                    if altyazi_dili == "en":
+                        st.divider()
+                        st.info("💡 İngilizce içerik saptandı. Aşağıdaki butona tıklayarak maddeleri Google Translate ile hızlıca Türkçe'ye çevirebilirsiniz:")
+                        st.markdown(f'<a href="https://google.com" target="_blank" style="display:inline-block; background-color:#2cbd5d; color:white; padding:10px 20px; border-radius:6px; text-decoration:none; font-weight:bold;">🌐 Google Translate Sayfasını Aç</a>', unsafe_allow_html=True)
+                        st.text_area("📋 Kopyalanacak Maddeler:", value=tum_maddeler_metin, height=120)
+                        
+                    with st.expander("📝 İşlenen Ham Kaynak Metni Görüntüle"):
+                        st.caption(metin)
+                        
     elif mod == "📝 Uzun Metin":
         girilen_metin = st.text_area("Yorumlanacak Uzun Metni Girin:", height=200, key="metin_alan_girdisi")
         if st.button("Metni Analiz Et"):
             if not girilen_metin.strip():
-                st.warning("Metin alanı boş bırakılamaz.")
-            else:
-                with st.spinner(f"🤖 Süzgeç çalışıyor ({madde_limiti} Madde)..."):
-                    ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti, dil="tr")
-                    emojiler = ["📌", "📊", "💡", "⚙️", "🎯", "🚀", "🔑", "💎", "📣", "📝", "🧠", "🔥", "⚡", "🍀", "🎯"]
-                    ozet_maddeleri = [f"{emojiler[i % len(emojiler)]} {m}" for i, m in enumerate(ham_maddeler)]
-                    
-                st.success("✅ İşlem Başarılı!")
-                for madde in ozet_maddeleri:
-                    st.write(madde)
