@@ -3,13 +3,14 @@ import json
 import os
 import time
 from datetime import datetime
-import youtube_transcript_api
 import re
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 import io
+import urllib.request
+import xml.etree.ElementTree as ET
 
 # Web Sayfası Tasarımı
 st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
@@ -43,6 +44,60 @@ def youtube_id_bul_kesin(link_veya_id):
             if "youtube" not in parca.lower() and "youtu" not in parca.lower():
                 return parca
     return None
+
+# --- 🌐 YEREL ALTYAZI ÇEKİCİ (KÜTÜPHANESİZ GÜVENLİ MOTOR) ---
+def yerel_altyazi_cek(video_id, cerez_yolu):
+    try:
+        # Netscape çerez formatından cookie string üretme
+        cookie_list = []
+        if os.path.exists(cerez_yolu):
+            with open(cerez_yolu, "r", encoding="utf-8") as f:
+                for line in f:
+                    if not line.startswith("#") and line.strip():
+                        parts = line.strip().split("\t")
+                        if len(parts) >= 7:
+                            cookie_list.append(f"{parts[5]}={parts[6]}")
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Cookie": "; ".join(cookie_list)
+        }
+        
+        # Video sayfasını iste
+        req = urllib.request.Request(f"https://youtube.com{video_id}", headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            html = response.read().decode('utf-8')
+            
+        # Altyazı URL'ini HTML içinden ayıkla
+        match = re.search(r'"captionTracks":\s*\[(.*?)\]', html)
+        if not match:
+            return None
+            
+        tracks_json = json.loads(f"[{match.group(1)}]")
+        
+        # Türkçe veya İngilizce parça seç
+        track_url = None
+        for track in tracks_json:
+            if track.get("languageCode") in ["tr", "en"]:
+                track_url = track.get("baseUrl")
+                break
+        if not track_url:
+            track_url = tracks_json[0].get("baseUrl")
+            
+        if not track_url:
+            return None
+            
+        # XML formatındaki altyazıyı indir ve düz metne çevir
+        req_track = urllib.request.Request(track_url, headers={"User-Agent": headers["User-Agent"]})
+        with urllib.request.urlopen(req_track, timeout=10) as resp_track:
+            xml_data = resp_track.read()
+            
+        root = ET.fromstring(xml_data)
+        text_parts = [elem.text for elem in root.findall('.//text') if elem.text]
+        return " ".join(text_parts)
+    except Exception as e:
+        st.error(f"Altyazı Çözümleme Hatası: {str(e)}")
+        return None
 
 # --- 🧠 AKILLI ÖZET MOTORU ---
 def akilli_yerel_ozetleyici(metin):
@@ -187,39 +242,11 @@ else:
                 if not video_id:
                     st.error("❌ Geçersiz video kodu!")
                 else:
-                    st.info(f"🔍 Sistem: Video Kodu '{video_id}' başarıyla doğrulandı. Altyazı motoru başlatılıyor...")
-                    metin_to_process = ""
+                    st.info(f"🔍 Sistem: Video Kodu '{video_id}' başarıyla doğrulandı. Bağımsız altyazı motoru başlatılıyor...")
+                    
                     PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
                     CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
                     
-                    with st.spinner("🤖 Güvenlik duvarları aşılıyor ve altyazılar çekiliyor..."):
+                    with st.spinner("🤖 Güvenlik duvarları çerez entegrasyonuyla aşılıyor..."):
                         if not os.path.exists(CEREZ_YOLU):
                             st.error(f"⚠️ Kritik Hata: Klasörde 'www.youtube.com_cookies.txt' dosyası bulunamadı!")
-                        else:
-                            try:
-                                # Modül üzerinden doğrudan çağrı (En güvenli ve esnek çağırma yöntemi)
-                                konusma_verisi = youtube_transcript_api.YouTubeTranscriptApi.get_transcript(
-                                    video_id, 
-                                    languages=['tr', 'en'], 
-                                    cookies=CEREZ_YOLU
-                                )
-                                metin_to_process = " ".join([parca['text'] for parca in konusma_verisi])
-                            except Exception as e:
-                                st.error(f"Altyazı API Hatası: {str(e)}")
-
-                    if metin_to_process:
-                        metni_ozetle_ve_kaydet(metin_to_process)
-                    else:
-                        st.error("❌ YouTube bu videonun dış sunuculardan indirilmesini engelledi veya altyazı bulunmuyor.")
-
-    # TAB 2: METİN ÖZETLEME
-    with sekme2:
-        st.subheader("📝 Elinizdeki Uzun Metni Buraya Yapıştırın")
-        girilen_metin = st.text_area("Özetlenecek Metin:", placeholder="Yazınızı veya makalenizi buraya ekleyin...", height=250)
-        
-        if st.button("Metni Analiz Et ve Özetle", key="text_btn"):
-            if not girilen_metin.strip():
-                st.warning("Lütfen boş bir metin bırakmayın!")
-            else:
-                with st.spinner("🤖 Metin analiz ediliyor..."):
-                    metni_ozetle_ve_kaydet(girilen_metin)
