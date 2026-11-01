@@ -36,7 +36,7 @@ def youtube_id_bul_kesin(link):
                 return parca
     return girdi
 
-# --- 🧠 YAPILANDIRILMIŞ TÜRKÇE YEREL ANALİZ MOTORU ---
+# --- 🧠 YAPILANDIRILMIŞ YEREL ANALİZ MOTORU ---
 def yerel_mantik_ozetleyici(metin):
     temiz_metin = re.sub(r'\[.*?\]', '', metin)
     temiz_metin = re.sub(r'\(.*?\)', '', temiz_metin)
@@ -60,7 +60,7 @@ def yerel_mantik_ozetleyici(metin):
         "ve", "veya", "ama", "fakat", "ile", "bir", "bu", "şu", "o", "da", "de", 
         "için", "gibi", "çok", "en", "daha", "olan", "olarak", "ki", "yani", "böyle",
         "thing", "music", "şey", "şeyler", "her", "zaten", "bunu", "buna", "bunda", 
-        "merhaba", "arkadaşlar", "video", "videoda", "müzik", "gülüşme"
+        "merhaba", "arkadaşlar", "video", "videoda", "müzik", "gülüşme", "the", "and", "you", "that"
     }
     
     frekanslar = {}
@@ -109,7 +109,8 @@ def metni_turkceye_cevir(ham_metin):
             return " ".join(cevirilmis_parcalar)
         return GoogleTranslator(source='auto', target='tr').translate(ham_metin)
     except Exception as e:
-        st.warning(f"⚠️ Çeviri motorunda küçük bir aksama yaşandı: {str(e)}")
+        # KESİN ÇÖZÜM: API kilitlenirse sistemi çökertme, uyarı ver ve ham metni teslim et
+        st.sidebar.warning(f"🌐 Çeviri servisi şu an yoğun, analiz orijinal dilde yapılıyor.")
         return ham_metin
 
 def ytdlp_altyazi_cek(video_id, cerez_yolu):
@@ -153,7 +154,7 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
             
             ham_metin_sonuc = " ".join(temiz_satirlar)
             if indirilen_dil == "en" or not any(k in ham_metin_sonuc.lower() for k in ["ve", "bir", "bu"]):
-                st.info("🌐 İngilizce içerik algılandı, otomatik Türkçe çeviri başlatılıyor...")
+                st.info("🌐 İngilizce içerik algılandı, Türkçe çeviri deneniyor...")
                 return metni_turkceye_cevir(ham_metin_sonuc)
             return ham_metin_sonuc
     except Exception as e:
@@ -182,10 +183,10 @@ def youtube_modu_calistir():
         veritabani_kaydet({"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri})
         
         st.success("✅ Analiz Başarıyla Tamamlandı!")
-        st.subheader("📊 Yapılandırılmış Mantıksal Maddeler (Türkçe):")
+        st.subheader("📊 Yapılandırılmış Mantıksal Özet Maddeleri:")
         for madde in ozet_maddeleri:
             st.write(madde)
-        st.subheader("📝 İşlenen Türkçe Kaynak Metin:")
+        st.subheader("📝 İşlenen Kaynak Metin:")
         st.caption(metin)
 
 def metin_modu_calistir():
@@ -223,7 +224,7 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
 
 # --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
-st.write("Çeviri Destekli ve Girinti Korumalı Stabil Sürüm")
+st.write("Bağlantı Korumalı Güvenli Sürüm")
 st.divider()
 
 if "aktif_ozet" in st.session_state:
