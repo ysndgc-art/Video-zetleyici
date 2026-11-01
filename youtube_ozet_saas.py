@@ -3,8 +3,9 @@ import json
 import os
 import re
 from datetime import datetime
+import urllib.request
+import urllib.parse
 import yt_dlp
-import streamlit.components.v1 as components
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
@@ -35,6 +36,22 @@ def youtube_id_bul_kesin(link):
             if parca.lower() not in ["youtube", "youtu", "watch", "embed"]:
                 return parca
     return girdi
+
+# --- 🌐 ENGELLENMEYEN ALTERNATİF ÇEVİRİ MOTORU ---
+def guvenli_hizli_cevirici(metin):
+    try:
+        # Kilitlenmeyen MyMemory API Altyapısı
+        url_metin = urllib.parse.quote(metin)
+        url = f"https://translated.net{url_metin}&langpair=en|tr"
+        istek = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(istek, timeout=4) as response:
+            veri = json.loads(response.read().decode('utf-8'))
+            cevirilmis = veri.get("responseData", {}).get("translatedText", "")
+            if cevirilmis and not "MYMEMORY WARNING" in cevirilmis.upper():
+                return cevirilmis
+    except:
+        pass
+    return metin
 
 # --- 🧠 ÇOK DİLLİ GELİŞMİŞ YEREL ANALİZ MOTORU ---
 def yerel_mantik_ozetleyici(metin, dil="tr"):
@@ -168,36 +185,33 @@ def youtube_modu_calistir():
             st.error("Altyazı indirilemedi. Videonun altyazı içerdiğinden emin olun.")
             return
             
-        with st.spinner("🤖 2. Adım: Kritik noktalar hesaplanıyor..."):
+        with st.spinner("🤖 2. Adım: Kritik noktalar hesaplanıyor ve dönüştürülüyor..."):
             ham_maddeler = yerel_mantik_ozetleyici(metin, dil=altyazi_dili)
             emojiler = ["📌", "📊", "💡", "⚙️", "🎯"]
-            ozet_maddeleri = [f"{emojiler[i % 5]} {m}" for i, m in enumerate(ham_maddeler)]
+            ozet_maddeleri = []
+            tum_maddeler_metin = ""
+            
+            for i, madde in enumerate(ham_maddeler):
+                if altyazi_dili == "en":
+                    ceviri = guvenli_hizli_cevirici(madde)
+                    ozet_maddeleri.append(f"{emojiler[i % 5]} {ceviri}")
+                    tum_maddeler_metin += f"- {madde}\n"
+                else:
+                    ozet_maddeleri.append(f"{emojiler[i % 5]} {madde}")
             
         simdi = datetime.now()
         veritabani_kaydet({"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri})
         
         st.success("✅ Analiz Başarıyla Tamamlandı!")
-        
-        # Eğer video İngilizce ise otomatik tarayıcı çeviri barını tetikle
-        if altyazi_dili == "en":
-            st.info("🌐 İngilizce içerik algılandı. Tarayıcı tabanlı anlık çeviri motoru aktif.")
-            components.html("""
-                <div id="google_translate_element"></div>
-                <script type="text/javascript">
-                function googleTranslateElementInit() {
-                  new google.translate.TranslateElement({pageLanguage: 'en', layout: google.translate.TranslateElement.InlineLayout.SIMPLE}, 'google_translate_element');
-                  setTimeout(function() {
-                     var select = document.querySelector('select.goog-te-combo');
-                     if(select) { select.value = 'tr'; select.dispatchEvent(new Event('change')); }
-                  }, 1000);
-                }
-                </script>
-                <script type="text/javascript" src="//://google.com"></script>
-            """, height=60)
-            
         st.subheader("📊 Yapılandırılmış Kritik Özet Maddeleri:")
         for madde in ozet_maddeleri:
             st.write(madde)
+            
+        if altyazi_dili == "en":
+            st.divider()
+            st.caption("💡 Sunucu engellemeleri nedeniyle maddeler tam Türkçe değilse, aşağıdaki butona tıklayarak maddeleri tek adımda Google Translate ile açabilirsiniz:")
+            kodlu_ozet = urllib.parse.quote(tum_maddeler_metin)
+            st.markdown(f'<a href="https://google.com{kodlu_ozet}&op=translate" target="_blank" style="display:inline-block; background-color:#2cbd5d; color:white; padding:8px 16px; border-radius:4px; text-decoration:none; font-weight:bold;">🌐 Özet Maddelerini Google Translate ile Çevir</a>', unsafe_allow_html=True)
             
         with st.expander("📝 İşlenen Ham Kaynak Metni Görüntüle"):
             st.caption(metin)
@@ -230,22 +244,3 @@ else:
     st.sidebar.info("Henüz geçmiş analiz bulunmuyor.")
 
 st.sidebar.divider()
-if st.sidebar.button("🗑️ Geçmişi Temizle"):
-    if os.path.exists(VERITABANI_DOSYASI):
-        os.remove(VERITABANI_DOSYASI)
-        st.sidebar.success("Geçmiş silindi!")
-        st.rerun()
-
-# --- ANA SAYFA ---
-st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
-st.write("Tarayıcı Tabanlı Otomatik Çeviri Destekli Stabil Sürüm")
-st.divider()
-
-if "aktif_ozet" in st.session_state:
-    st.info("📂 **Geçmiş Özet Görüntüleniyor**")
-    g = st.session_state["aktif_ozet"]
-    st.success(f"✅ Analiz Tarihi: {g['tarih']} - {g['saat']}")
-    st.subheader("📊 Çıkarılan Kritik Maddeler:")
-    for m in g['ozet']: st.write(m)
-    if st.button("➕ Yeni Özet Ekranına Dön"):
-        del st.session_state["aktif_ozet"]
