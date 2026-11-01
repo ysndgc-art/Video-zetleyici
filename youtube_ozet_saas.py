@@ -35,41 +35,6 @@ def youtube_id_bul_kesin(link):
                 return parca
     return girdi
 
-# --- 🌐 %100 YEREL VE HAFİF ÇEVİRİ MOTORU ---
-def yerel_sozluk_cevirisi(madde_listesi):
-    sozluk = {
-        "and": "ve", "to": "-e", "of": "ait", "in": "içinde", "is": "dır", "that": "şu",
-        "it": "o", "was": "idi", "for": "için", "on": "üzerinde", "are": "dırlar", "as": "olarak", "with": "ile",
-        "this": "bu", "they": "onlar", "but": "ama", "what": "ne", "from": "-den", "your": "senin", "how": "nasıl",
-        "video": "video", "channel": "kanal", "subscribe": "abone ol", "like": "beğen", "music": "müzik",
-        "important": "önemli", "first": "ilk", "second": "ikinci", "step": "adım", "code": "kod", "system": "sistem",
-        "project": "proje", "software": "yazılım", "problem": "sorun", "error": "hata", "success": "başarı",
-        "learning": "öğrenme", "data": "veri", "development": "geliştirme", "application": "uygulama",
-        "we": "biz", "you": "siz", "he": "o", "she": "o", "can": "-ebilir", "will": "-ecek", "should": "-meli",
-        "good": "iyi", "bad": "kötü", "new": "yeni", "old": "eski", "make": "yapmak", "get": "almak", "see": "görmek"
-    }
-    
-    cevirilmis_maddeler = []
-    emojiler = ["📌", "📊", "💡", "⚙️", "🎯"]
-    
-    for i, madde in enumerate(madde_listesi):
-        # Kilitlenmeyi önleyen hızlı kelime bazlı Regex değişimi
-        kelimeler = madde.split()
-        yeni_kelimeler = []
-        for k in kelimeler:
-            saf_kelime = re.sub(r'[^\w]', '', k).lower()
-            if saf_kelime in sozluk:
-                # Sadece kök kelimeyi değiştir, işaretleri koru
-                k = re.sub(r'\b' + saf_kelime + r'\b', sozluk[saf_kelime], k, flags=re.IGNORECASE)
-            yeni_kelimeler.append(k)
-            
-        cumle_metni = " ".join(yeni_kelimeler).strip()
-        if cumle_metni:
-            cumle_metni = cumle_metni[0].upper() + cumle_metni[1:]
-        cevirilmis_maddeler.append(f"{emojiler[i % 5]} {cumle_metni}")
-        
-    return cevirilmis_maddeler
-
 # --- 🧠 ÇOK DİLLİ GELİŞMİŞ YEREL ANALİZ MOTORU ---
 def yerel_mantik_ozetleyici(metin, dil="tr"):
     temiz_metin = re.sub(r'\[.*?\]', '', metin)
@@ -128,7 +93,7 @@ def yerel_mantik_ozetleyici(metin, dil="tr"):
     for idx in en_iyi_indeksler:
         ham_cumle = cumleler[idx].strip()
         if ham_cumle:
-            ham_cumle = ham_cumle[0].upper() + ham_cumle[1:]
+            ham_cumle = ham_cumle.upper() + ham_cumle[1:]
             if not ham_cumle.endswith("."):
                 ham_cumle += "."
             sonuc.append(ham_cumle)
@@ -196,12 +161,8 @@ def youtube_modu_calistir():
             
         with st.spinner("🤖 2. Adım: Kritik noktalar hesaplanıyor..."):
             ham_maddeler = yerel_mantik_ozetleyici(metin, dil=altyazi_dili)
-            if altyazi_dili == "en":
-                st.info("🌐 İngilizce içerik saptandı, hafif yerel sözlük motoru çalışıyor...")
-                ozet_maddeleri = yerel_sozluk_cevirisi(ham_maddeler)
-            else:
-                emojiler = ["📌", "📊", "💡", "⚙️", "🎯"]
-                ozet_maddeleri = [f"{emojiler[i % 5]} {m}" for i, m in enumerate(ham_maddeler)]
+            emojiler = ["📌", "📊", "💡", "⚙️", "🎯"]
+            ozet_maddeleri = [f"{emojiler[i % 5]} {m}" for i, m in enumerate(ham_maddeler)]
             
         simdi = datetime.now()
         veritabani_kaydet({"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri})
@@ -241,3 +202,30 @@ if gecmis:
 else:
     st.sidebar.info("Henüz geçmiş analiz bulunmuyor.")
 
+st.sidebar.divider()
+if st.sidebar.button("🗑️ Geçmişi Temizle"):
+    if os.path.exists(VERITABANI_DOSYASI):
+        os.remove(VERITABANI_DOSYASI)
+        st.sidebar.success("Geçmiş silindi!")
+        st.rerun()
+
+# --- ANA SAYFA ---
+st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
+st.write("Döngü Kilitlenmeleri Temizlenmiş %100 Kararlı Sürüm")
+st.divider()
+
+if "aktif_ozet" in st.session_state:
+    st.info("📂 **Geçmiş Özet Görüntüleniyor**")
+    g = st.session_state["aktif_ozet"]
+    st.success(f"✅ Analiz Tarihi: {g['tarih']} - {g['saat']}")
+    st.subheader("📊 Çıkarılan Kritik Maddeler:")
+    for m in g['ozet']: st.write(m)
+    if st.button("➕ Yeni Özet Ekranına Dön"):
+        del st.session_state["aktif_ozet"]
+        st.rerun()
+else:
+    mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
+    if mod == "📺 YouTube Videosu":
+        youtube_modu_calistir()
+    if mod == "📝 Uzun Metin":
+        metin_modu_calistir()
