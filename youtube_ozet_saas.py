@@ -33,11 +33,9 @@ def veritabani_kaydet(yeni_ozet):
 def youtube_id_bul_kesin(link_veya_id):
     girdi = link_veya_id.strip()
     
-    # Doğrudan 11 haneli kod girildiyse harf yapısını koru ve döndür
     if len(girdi) == 11 and not "/" in girdi and not "." in girdi and not "?" in girdi:
         return girdi
         
-    # Link girildiyse harf hassasiyetini koruyarak ayıkla
     if "watch?v=" in girdi:
         parcalar = girdi.split("watch?v=")
         if len(parcalar) > 1:
@@ -52,7 +50,6 @@ def youtube_id_bul_kesin(link_veya_id):
             if len(sub_part[0]) == 11:
                 return sub_part[0]
             
-    # Gelişmiş Regex Ayıklama (Büyük/Küçük Harf Duyarlı)
     bulunan = re.findall(r'[a-zA-Z0-9_-]{11}', girdi)
     if bulunan:
         for parca in bulunan:
@@ -237,12 +234,18 @@ def ana_akisi_yonet():
     if mod_secimi == "📝 Uzun Metin Özetle":
         metin_modu_calistir()
 
-# --- YAN MENÜ GEÇMİŞ YÖNETİMİ ---
-st.sidebar.title("📜 Özet Geçmişiniz")
-gecmis_listesi = veritabani_yukle()
-secilen_eski_ozet = None
-
-if not gecmis_listesi:
-    st.sidebar.info("Henüz geçmiş özetiniz bulunmuyor.")
-else:
-    for sira, g in enumerate(gecmis_listesi):
+# --- YAN MENÜ YÖNETİCİ FONKSİYONU ---
+def yan_menu_olustur():
+    st.sidebar.title("📜 Özet Geçmişiniz")
+    gecmis = veritabani_yukle()
+    secilen = None
+    
+    if not gecmis:
+        st.sidebar.info("Henüz geçmiş özetiniz bulunmuyor.")
+        return None
+        
+    for sira, g in enumerate(gecmis):
+        if st.sidebar.button(f"⏱️ {g['saat']} - {g['metin'][:20]}...", key=f"g_{sira}"):
+            secilen = g
+            
+    st.sidebar.divider()
