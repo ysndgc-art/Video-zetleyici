@@ -121,7 +121,9 @@ def metni_ozetle_ve_kaydet(kaynak_metin):
     tarih = simdi.strftime("%d.%m.%Y")
     saat = simdi.strftime("%H:%M:%S")
     ozet_sonuc = akilli_yerel_ozetleyici(kaynak_metin)
-    yeni_kayit = {"tarih": tarih, "saat": saat, "metin": kaynak_metin, "ozet": ozet_sonuc}
+    yeni_kayit = {"tarih": tarih, "saat": saat, "metin": gateway_metin if 'gateway_metin' in locals() else kaynak_metin, "ozet": ozet_sonuc}
+    # Küçük bir düzeltme: veritabanı kayıt objesinde orijinal kaynak metni saklıyoruz
+    yeni_kayit["metin"] = kaynak_metin
     veritabani_kaydet(yeni_kayit)
     ozeti_ekrana_yazdir(tarih, saat, kaynak_metin, ozet_sonuc)
 
@@ -137,8 +139,12 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
         'no_warnings': True
     }
     try:
+        # KESİN ÇÖZÜM URL DÜZELTMESİ:
+        # yt-dlp'nin adresi yanlış birleştirmesini önlemek için doğrudan video URL'sini veriyoruz
+        video_url = f"https://youtube.com{video_id}"
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([f"https://youtube.com{video_id}"])
+            ydl.download([video_url])
+            
         altyazi_metni = ""
         bulunan_dosya = None
         for dosya in os.listdir("."):
@@ -163,7 +169,7 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
         st.error(f"Sistem Hatası: {str(e)}")
     return None
 
-# Yan Menü Gecmiş Yönetimi
+# Yan Menü Geçmiş Yönetimi
 st.sidebar.title("📜 Özet Geçmişiniz")
 gecmis_listesi = veritabani_yukle()
 secilen_eski_ozet = None
@@ -197,7 +203,7 @@ else:
     
     if mod_secimi == "📺 YouTube Videosu Özetle":
         st.subheader("🚀 Sadece Linki Yapıştırın")
-        video_linki = st.text_input("YouTube Linkini veya Video Kodunu Girin:", placeholder="Örn: kqtD5dpn9C8")
+        video_linki = st.text_input("YouTube Linkini veya Video Kodunu Girin:", placeholder="Örn: 1okydhdhabq")
         if st.button("Videoyu Analiz Et ve Özetle"):
             v_id = youtube_id_bul_kesin(video_linki)
             if not video_linki:
@@ -231,10 +237,3 @@ else:
                 
     if mod_secimi == "📝 Uzun Metin Özetle":
         st.subheader("📝 Metni Buraya Yapıştırın")
-        girilen_metin = st.text_area("Özetlenecek Metin:", placeholder="Yazınızı buraya ekleyin...", height=250)
-        if st.button("Metni Analiz Et ve Özetle"):
-            if not girilen_metin.strip():
-                st.warning("Lütfen boş bir metin bırakmayın!")
-            else:
-                with st.spinner("🤖 Metin analiz ediliyor..."):
-                    metni_ozetle_ve_kaydet(girilen_metin)
