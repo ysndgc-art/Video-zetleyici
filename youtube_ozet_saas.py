@@ -31,10 +31,9 @@ def veritabani_kaydet(yeni_ozet):
             json.dump(gecmis, f, ensure_ascii=False, indent=4)
 
 def youtube_id_bul_kesin(link_veya_id):
-    # Harf büyüklüğünü korumak için kesinlikle .lower() yapmıyoruz!
     girdi = link_veya_id.strip()
     
-    # Doğrudan 11 haneli kod girildiyse koru ve döndür
+    # Doğrudan 11 haneli kod girildiyse harf yapısını koru ve döndür
     if len(girdi) == 11 and not "/" in girdi and not "." in girdi and not "?" in girdi:
         return girdi
         
@@ -135,7 +134,6 @@ def metni_ozetle_ve_kaydet(kaynak_metin):
     ozeti_ekrana_yazdir(tarih, saat, kaynak_metin, ozet_sonuc)
 
 def ytdlp_altyazi_cek(clean_video_id, cerez_yolu):
-    # Video ID'sinin harf yapısını mutlak olarak koru
     safe_id = str(clean_video_id).strip()
     
     ydl_opts = {
@@ -146,13 +144,11 @@ def ytdlp_altyazi_cek(clean_video_id, cerez_yolu):
         'cookiefile': cerez_yolu,
         'outtmpl': f"sub_{safe_id}",
         'quiet': True,
-        'no_warnings': True,
-        'prefer_insecure': False
+        'no_warnings': True
     }
     try:
-        # DOĞRUDAN RECMİ STANDART LİNK ENJEKSİYONU
+        # KESİN VE MUTLAK URL BAĞLANTISI
         mutlak_url = f"https://youtube.com{safe_id}"
-        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([mutlak_url])
             
@@ -192,7 +188,7 @@ def youtube_modu_calistir():
         
         v_id = youtube_id_bul_kesin(video_linki)
         if not v_id or len(v_id) != 11:
-            st.error("❌ Geçersiz video kodu! Lütfen 11 haneli kodu (Büyük/Küçük harflere dikkat ederek) doğru girin.")
+            st.error("❌ Geçersiz video kodu! Lütfen 11 haneli kodu doğru girin.")
             return
             
         st.info(f"🔍 Sistem: Video Kodu '{v_id}' başarıyla izole edildi. İndirme başlatılıyor...")
@@ -242,9 +238,14 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
         st.rerun()
 
 # --- ANA SAYFA ÇALIŞTIRICI ---
-st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
-st.write("Dış platform bağımlılığı olmayan kararlı sürüm.")
-st.divider()
-
 if secilen_eski_ozet:
     st.info("📂 **Geçmiş Özet Görüntüleniyor**")
+    ozeti_ekrana_yazdir(secilen_eski_ozet['tarih'], secilen_eski_ozet['saat'], secilen_eski_ozet['metin'], secilen_eski_ozet['ozet'])
+    if st.button("➕ Yeni Özet Ekranına Dön"):
+        st.rerun()
+else:
+    mod_secimi = st.radio("Lütfen Özetleme Modu Seçin:", ["📺 YouTube Videosu Özetle", "📝 Uzun Metin Özetle"], horizontal=True)
+    
+    if mod_secimi == "📺 YouTube Videosu Özetle":
+        youtube_modu_calistir()
+        
