@@ -31,15 +31,11 @@ def youtube_id_bul_kesin(link):
         return girdi
         
     # Link girildiyse içindeki 11 haneli benzersiz video kodunu yakala
-    if "watch?v=" in girdi:
-        parca = girdi.split("watch?v=")[1]
-        return parca[:11]
-    if "youtu.be/" in girdi:
-        parca = girdi.split("youtu.be/")[1]
-        return parca[:11]
-    if "embed/" in girdi:
-        parca = girdi.split("embed/")[1]
-        return parca[:11]
+    bulunan = re.findall(r'[a-zA-Z0-9_-]{11}', girdi)
+    if bulunan:
+        for parca in bulunan:
+            if parca.lower() not in ["youtube", "youtu", "watch", "embed"]:
+                return parca
         
     return girdi
 
@@ -63,12 +59,13 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
         'no_warnings': True
     }
     try:
-        # KESİN ÇÖZÜM: yt-dlp'nin extractor mekanizmasını ve adres birleştirme bug'ını 
-        # tamamen bypass etmek için doğrudan standart embed (gömülü) url'sini veriyoruz.
-        mutlak_embed_url = f"https://youtube.com{safe_id}"
+        # MUTLAK ÇÖZÜM PARAMETRE ENJEKSİYONU:
+        # Adresin sonuna '&feature=shared&x=1' ekleyerek yt-dlp'nin video ID'sini 
+        # alan adıyla hatalı birleştirmesini (youtube.com1okyd...) fiziksel olarak engelliyoruz.
+        mutlak_url = f"https://youtube.com{safe_id}&feature=shared&x=1"
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([mutlak_embed_url])
+            ydl.download([mutlak_url])
         
         bulunan_dosya = None
         for dosya in os.listdir("."):
@@ -101,7 +98,7 @@ for g in gecmis[:10]:
 
 # --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
-st.write("Harf Duyarlılığı ve URL Altyapısı Düzeltilmiş Sürüm")
+st.write("URL Kilitlenme Korumalı Sürüm")
 
 mod = st.radio("Mod Seçin:", ["📺 YouTube", "📝 Metin"], horizontal=True)
 
