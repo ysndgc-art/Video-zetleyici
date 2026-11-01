@@ -140,7 +140,6 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
         'ie_key': 'Youtube',
         'socket_timeout': 20,
         'retries': 3,
-        # 🤖 Bot Engellemesini Aşmak İçin Gelişmiş İstemci Maskelemeleri
         'extractor_args': {
             'youtube': {
                 'clients': ['web', 'mweb', 'tv', 'android'],
@@ -157,7 +156,6 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([safe_id])
         bulunan_dosya = None
-        # VTT, SRT ve diğer altyazi uzantılarını tarama listesine dahil et
         for dosya in os.listdir("."):
             if dosya.startswith(f"sub_{safe_id}") and any(dosya.endswith(ext) for ext in [".vtt", ".srt", ".ttml", ".srv3"]):
                 bulunan_dosya = dosya
@@ -242,3 +240,6 @@ if mod == "📝 Uzun Metin":
     girilen_metin = st.text_area("Yorumlanacak Uzun Metni Girin:", height=200)
     if st.button("Metni Analiz Et"):
         if not girilen_metin.strip():
+            st.warning("Lütfen metin girin.")
+        else:
+            with st.spinner("🤖 Analiz ediliyor..."):
