@@ -11,6 +11,8 @@ st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", 
 # Güvenli başlangıç durumları
 if "aktif_ozet" not in st.session_state:
     st.session_state["aktif_ozet"] = None
+if "yeni_sonuc" not in st.session_state:
+    st.session_state["yeni_sonuc"] = None
 
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
 GUNLUK_UCRETSIZ_LIMIT = 10
@@ -209,6 +211,7 @@ if gecmis_listesi:
     for sira, g in enumerate(gecmis_listesi[:10]):
         if st.sidebar.button(f"⏱️ {g.get('saat','')} - {g.get('metin','')[:15]}...", key=f"hist_{sira}"):
             st.session_state["aktif_ozet"] = g
+            st.session_state["yeni_sonuc"] = None
 else:
     st.sidebar.info("Henüz geçmiş analiz bulunmuyor.")
 
@@ -222,6 +225,8 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
     if os.path.exists(VERITABANI_DOSYASI):
         try: os.remove(VERITABANI_DOSYASI)
         except: pass
+    st.session_state["aktif_ozet"] = None
+    st.session_state["yeni_sonuc"] = None
     st.rerun()
 
 # --- ANA SAYFA ---
@@ -229,16 +234,22 @@ st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
 st.write("Gelişmiş İstatistik Paneli ve Kolay Dışa Aktarma Sistemi")
 st.divider()
 
-if st.session_state["aktif_ozet"] is not None:
-    st.info("📂 **Geçmiş Analiz Görüntüleniyor**")
-    g = st.session_state["aktif_ozet"]
-    st.success(f"✅ Analiz Tarihi: {g.get('tarih','')} - {g.get('saat','')}")
+# Canlı veya Geçmiş Sonuç Ekranı Kontrolü
+gosterilecek_veri = None
+if st.session_state["yeni_sonuc"] is not None:
+    gosterilecek_veri = st.session_state["yeni_sonuc"]
+elif st.session_state["aktif_ozet"] is not None:
+    gosterilecek_veri = st.session_state["aktif_ozet"]
+
+if gosterilecek_veri is not None:
+    st.info("📂 **Analiz Sonucu Görüntüleniyor**")
+    st.success(f"✅ Analiz Tarihi: {gosterilecek_veri.get('tarih','')} - {gosterilecek_veri.get('saat','')}")
     
-    for m in g.get('ozet', []): 
+    for m in gosterilecek_veri.get('ozet', []): 
         st.write(m)
         
     st.divider()
-    t_fmt, m_fmt, h_fmt = rapor_formatlarini_uret(g.get('tarih',''), g.get('saat',''), g.get('ozet', []))
+    t_fmt, m_fmt, h_fmt = rapor_formatlarini_uret(gosterilecek_veri.get('tarih',''), gosterilecek_veri.get('saat',''), gosterilecek_veri.get('ozet', []))
     
     st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain")
     st.download_button(label="📥 Markdown Olarak İndir", data=m_fmt.encode('utf-8'), file_name="analiz.md", mime="text/markdown")
@@ -246,18 +257,7 @@ if st.session_state["aktif_ozet"] is not None:
         
     if st.button("➕ Yeni Analiz Ekranına Dön"):
         st.session_state["aktif_ozet"] = None
+        st.session_state["yeni_sonuc"] = None
         st.rerun()
 else:
     mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
-    madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
-
-    if mod == "📺 YouTube Videosu":
-        video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="Örn: https://youtube.com...", key="video_url_girdisi")
-        
-        if st.button("Videoyu Analiz Et"):
-            if not video_linki.strip():
-                st.warning("Lütfen bir YouTube linki girin.")
-            else:
-                izin_verildi, guncel_sayac = kota_kontrol_ve_guncelle()
-                if not izin_verildi:
-                    st.error("❌ Günlük ücretsiz limite ulaştınız.")
