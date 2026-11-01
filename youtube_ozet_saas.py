@@ -195,6 +195,54 @@ def metni_ozetle_ve_kaydet(kaynak_metin):
     veritabani_kaydet(yeni_kayit)
     ozeti_ekrana_yazdir(tarih, saat, kaynak_metin, ozet_sonuc)
 
+# --- ⚙️ HATAYI ÖNLEYEN SEKME FONKSİYONLARI ---
+def youtube_sekmesi_icerik():
+    st.subheader("🚀 Sadece Linki Yapıştırın")
+    video_linki = st.text_input("YouTube Linkini veya Video Kodunu Girin:", placeholder="Örn: https://youtube.com", key="yt_input")
+    
+    if st.button("Videoyu Analiz Et ve Özetle", key="yt_btn"):
+        if not video_linki:
+            st.warning("Lütfen bir link girin!")
+        else:
+            v_id = youtube_id_bul_kesin(video_linki)
+            if not v_id:
+                st.error("❌ Geçersiz video kodu!")
+            else:
+                st.session_state.video_id = v_id
+                st.session_state.islem_basladi = True
+                st.rerun()
+
+    if st.session_state.islem_basladi and st.session_state.video_id:
+        st.info(f"🔍 Sistem: Video Kodu '{st.session_state.video_id}' doğrulandı. İşlem başlatılıyor...")
+        PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
+        CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
+        
+        metin_to_process = ""
+        with st.spinner("🤖 Güvenlik duvarları oturum hafızasıyla aşılıyor, altyazılar indiriliyor..."):
+            if not os.path.exists(CEREZ_YOLU):
+                st.error("⚠️ Kritik Hata: Klasörde 'www.youtube.com_cookies.txt' dosyası bulunamadı!")
+            else:
+                metin_to_process = ytdlp_altyazi_cek(st.session_state.video_id, CEREZ_YOLU)
+
+        st.session_state.islem_basladi = False
+        st.session_state.video_id = None
+
+        if metin_to_process:
+            metni_ozetle_ve_kaydet(metin_to_process)
+        else:
+            st.error("❌ YouTube bağlantıyı reddetti veya bu videonun altyazısı indirilemedi.")
+
+def metin_sekmesi_icerik():
+    st.subheader("📝 Elinizdeki Uzun Metni Buraya Yapıştırın")
+    girilen_metin = st.text_area("Özetlenecek Metin:", placeholder="Yazınızı veya makalenizi buraya ekleyin...", height=250)
+    
+    if st.button("Metni Analiz Et ve Özetle", key="text_btn"):
+        if not girilen_metin.strip():
+            st.warning("Lütfen boş bir metin bırakmayın!")
+        else:
+            with st.spinner("🤖 Metin analiz ediliyor..."):
+                metni_ozetle_ve_kaydet(girilen_metin)
+
 # --- YAN MENÜ (SIDEBAR) ---
 st.sidebar.title("📜 Özet Geçmişiniz")
 gecmis_listesi = veritabani_yukle()
@@ -209,52 +257,3 @@ else:
             secilen_eski_ozet = g
 
 st.sidebar.divider()
-if st.sidebar.button("🗑️ Geçmişi Temizle"):
-    if os.path.exists(VERITABANI_DOSYASI):
-        os.remove(VERITABANI_DOSYASI)
-        st.sidebar.success("Geçmiş silindi!")
-        st.rerun()
-
-# --- ANA SAYFA ---
-st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
-st.write("Dış platformlara bağımlılığı olmayan, otomatik altyazı çözümlü kararlı sürüm.")
-st.divider()
-
-if secilen_eski_ozet:
-    st.info("📂 **Geçmiş Özet Görüntüleniyor**")
-    ozeti_ekrana_yazdir(secilen_eski_ozet['tarih'], secilen_eski_ozet['saat'], secilen_eski_ozet['metin'], secilen_eski_ozet['ozet'])
-    if st.button("➕ Yeni Özet Oluşturma Ekranına Dön"): 
-        st.rerun()
-
-else:
-    sekme1, sekme2 = st.tabs(["📺 YouTube Videosu Özetle", "📝 Uzun Metin/Yazı Özetle"])
-
-    # TAB 1: YOUTUBE ÖZETLEME
-    with sekme1:
-        st.subheader("🚀 Sadece Linki Yapıştırın")
-        video_linki = st.text_input("YouTube Linkini veya Video Kodunu Girin:", placeholder="Örn: https://youtube.com", key="yt_input")
-        
-        if st.button("Videoyu Analiz Et ve Özetle", key="yt_btn"):
-            if not video_linki:
-                st.warning("Lütfen bir link girin!")
-            else:
-                v_id = youtube_id_bul_kesin(video_linki)
-                if not v_id:
-                    st.error("❌ Geçersiz video kodu!")
-                else:
-                    st.session_state.video_id = v_id
-                    st.session_state.islem_basladi = True
-                    st.rerun()
-
-        # İşlem tetiklendiğinde çalışan alan
-        if st.session_state.islem_basladi and st.session_state.video_id:
-            st.info(f"🔍 Sistem: Video Kodu '{st.session_state.video_id}' doğrulandı. İşlem başlatılıyor...")
-            
-            PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
-            CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
-            
-            metin_to_process = ""
-            with st.spinner("🤖 Güvenlik duvarları oturum hafızasıyla aşılıyor, altyazılar indiriliyor..."):
-                if not os.path.exists(CEREZ_YOLU):
-                    st.error(f"⚠️ Kritik Hata: Klasörde 'www.youtube.com_cookies.txt' dosyası bulunamadı!")
-                else:
