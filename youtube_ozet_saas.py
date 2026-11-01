@@ -49,7 +49,6 @@ def yapay_zeka_ozetle(altyazi_metni):
     if not HF_API_TOKEN:
         return "⚠️ Lütfen sol menüden ücretsiz Hugging Face Access Token girişini yapın!"
         
-    # Sunucu yoğunluğuna karşı en kararlı çalışan alternatif Llama-3 API uç noktası
     API_URL = "https://huggingface.co"
     headers = {"Authorization": f"Bearer {HF_API_TOKEN.strip()}"}
     
@@ -71,19 +70,16 @@ def yapay_zeka_ozetle(altyazi_metni):
     try:
         response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
         
-        # HTTP Durum kontrolü (Boş veya hatalı HTML dönüşlerini yakalamak için)
         if response.status_code == 503:
             return "⏳ Yapay zeka modeli şu an Hugging Face sunucularına yükleniyor/uyanıyor. Lütfen 15-20 saniye sonra tekrar deneyin."
         if response.status_code == 401:
             return "❌ Geçersiz API Token! Lütfen sol menüdeki Hugging Face Access Token'ı doğru girdiğinizden emin olun."
             
-        # JSON ayrıştırma hatasını (Expecting value) yakalayan güvenli blok
         try:
             res_json = response.json()
         except ValueError:
             return f"❌ API boş yanıt döndürdü (HTTP {response.status_code}). Hugging Face sunucuları şu an yoğun olabilir, lütfen butona tekrar basın."
         
-        # Model yüklenme aşamasındaysa bekletip otomatik tekrar deneme
         if isinstance(res_json, dict) and "error" in res_json and "loading" in res_json["error"]:
             st.warning("⏳ Model sunucuda hazırlanıyor, otomatik olarak 8 saniye bekleniyor...")
             time.sleep(8)
@@ -94,7 +90,7 @@ def yapay_zeka_ozetle(altyazi_metni):
                 return "❌ Model uyandırma aşamasında API bağlantısı koptu. Lütfen tekrar deneyin."
             
         if isinstance(res_json, list) and len(res_json) > 0:
-            text_field = res_json[0].get("generated_text", "")
+            text_field = res_json.get("generated_text", "")
             return text_field.replace(prompt, "").strip()
         elif isinstance(res_json, dict) and "generated_text" in res_json:
             return res_json["generated_text"].replace(prompt, "").strip()
@@ -172,48 +168,58 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
         st.error(f"Altyazı Motor Hatası: {str(e)}")
     return None
 
-# --- SIDEBAR GEÇMİŞ ---
-st.sidebar.title("📜 Özet Geçmişiniz")
-gecmis = veritabani_yukle()
-for g in gecmis[:10]:
-    st.sidebar.write(f"⏱️ {g.get('saat','')} - {g.get('ozet','')[:25]}...")
-
-# --- ANA SAYFA ---
-st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
-st.write("Güvenli API Hata Yönetimli Sürüm")
-
-mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
-
-if mod == "📺 YouTube Videosu":
+# --- MOD SAYFALARI (SIFIR GİRİNTİ RİSKİ) ---
+def youtube_sayfasi_calistir():
     video_linki = st.text_input("YouTube Linki veya Kodu:", value="1OkydHdhABQ")
     if st.button("Videoyu Yapay Zekayla Analiz Et"):
         if not HF_API_TOKEN:
             st.warning("⚠️ Lütfen önce sol menüye Hugging Face Token'ınızı girin!")
-        else:
-            v_id = youtube_id_bul_kesin(video_linki)
-            PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
-            CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
+            return
             
-            with st.spinner("📥 1. Adım: Altyazılar YouTube'dan çekiliyor..."):
-                metin = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
-                
-            if metin:
-                with st.spinner("🤖 2. Adım: Yapay zeka cümleleri mantıksal süzgeçten geçirip özetliyor..."):
-                    ai_ozet = yapay_zeka_ozetle(metin)
-                
-                if "❌" in ai_ozet or "⚠️" in ai_ozet or "⏳" in ai_ozet:
-                    st.error(ai_ozet)
-                else:
-                    simdi = datetime.now()
-                    tarih_str = simdi.strftime("%d.%m.%Y")
-                    saat_str = simdi.strftime("%H:%M:%S")
-                    
-                    veritabani_kaydet({"tarih": tarih_str, "saat": saat_str, "metin": metin, "ozet": ai_ozet})
-                    st.success("✅ Analiz Tamamlandı!")
-                    
-                    pdf_dosya = pdf_rapor_uret(tarih_str, saat_str, ai_ozet)
-                    st.download_button(label="📥 Yapay Zeka Özetini PDF Olarak İndir", data=pdf_dosya, file_name=f"AI_Ozet_{v_id}.pdf", mime="application/pdf")
-                    
-                    st.subheader("📊 Yapay Zeka Mantıksal Analiz Raporu:")
-                    st.info(ai_ozet)
+        v_id = youtube_id_bul_kesin(video_linki)
+        PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
+        CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
+        
+        with st.spinner("📥 1. Adım: Altyazılar YouTube'dan çekiliyor..."):
+            metin = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
+            
+        if metin:
+            with st.spinner("🤖 2. Adım: Yapay zeka cümleleri mantıksal süzgeçten geçirip özetliyor..."):
+                ai_ozet = yapay_zeka_ozetle(metin)
+            
+            if "❌" in ai_ozet or "⚠️" in ai_ozet or "⏳" in ai_ozet:
+                st.error(ai_ozet)
             else:
+                simdi = datetime.now()
+                tarih_str = simdi.strftime("%d.%m.%Y")
+                saat_str = simdi.strftime("%H:%M:%S")
+                
+                veritabani_kaydet({"tarih": tarih_str, "saat": saat_str, "metin": metin, "ozet": ai_ozet})
+                st.success("✅ Analiz Tamamlandı!")
+                
+                pdf_dosya = pdf_rapor_uret(tarih_str, saat_str, ai_ozet)
+                st.download_button(label="📥 Yapay Zeka Özetini PDF Olarak İndir", data=pdf_dosya, file_name=f"AI_Ozet_{v_id}.pdf", mime="application/pdf")
+                
+                st.subheader("📊 Yapay Zeka Mantıksal Analiz Raporu:")
+                st.info(ai_ozet)
+        else:
+            st.error("Altyazı indirilemedi. Videoda altyazı açık olduğundan emin olun.")
+
+def metin_sayfasi_calistir():
+    girilen_metin = st.text_area("Özetlenecek Metni Girin:", height=200)
+    if st.button("Metni Yapay Zekayla Özetle"):
+        if not HF_API_TOKEN:
+            st.warning("⚠️ Lütfen önce sol menüye Hugging Face Token'ınızı girin!")
+            return
+            
+        if not girilen_metin.strip():
+            st.warning("Metin alanı boş bırakılamaz.")
+            return
+            
+        with st.spinner("🤖 Yapay zeka metni analiz ediyor..."):
+            ai_ozet = yapay_zeka_ozetle(girilen_metin)
+        
+        if "❌" in ai_ozet or "⚠️" in ai_ozet or "⏳" in ai_ozet:
+            st.error(ai_ozet)
+        else:
+            st.success("✅ İşlem Başarıllı!")
