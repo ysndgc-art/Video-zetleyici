@@ -6,7 +6,7 @@ from datetime import datetime
 import yt_dlp
 
 # --- SAYFA YAPILANDIRMASI ---
-st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
+st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
 
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
 
@@ -40,7 +40,8 @@ def youtube_id_bul_kesin(link):
                 return parca
     return girdi
 
-def yerel_mantik_ozetleyici(metin, dil="tr"):
+# --- 🧠 %100 YEREL GELİŞMİŞ ANALİZ MOTORU ---
+def yerel_mantik_ozetleyici(metin, madde_sayisi=5, dil="tr"):
     temiz_metin = re.sub(r'\[.*?\]', '', metin)
     temiz_metin = re.sub(r'\(.*?\)', '', temiz_metin)
     temiz_metin = re.sub(r'\s+', ' ', temiz_metin).strip()
@@ -55,14 +56,14 @@ def yerel_mantik_ozetleyici(metin, dil="tr"):
     else:
         cumleler = [c.strip() for c in re.split(r'(?<=[.!?])\s+', temiz_metin) if c.strip()]
 
-    if len(cumleler) <= 5:
+    if len(cumleler) <= madde_sayisi:
         return [c for c in cumleler if len(c.split()) > 3]
 
     kelimeler = re.findall(r'\w+', temiz_metin.lower())
     if dil == "tr":
-        durma_kelimeleri = {"ve", "veya", "ama", "fakat", "ile", "bir", "bu", "için", "gibi"}
+        durma_kelimeleri = {"ve", "veya", "ama", "fakat", "ile", "bir", "bu", "için", "gibi", "da", "de"}
     else:
-        durma_kelimeleri = {"the", "and", "you", "that", "was", "for", "on", "are", "with"}
+        durma_kelimeleri = {"the", "and", "you", "that", "was", "for", "on", "are", "with", "this"}
     
     frekanslar = {}
     for k in kelimeler:
@@ -73,7 +74,7 @@ def yerel_mantik_ozetleyici(metin, dil="tr"):
     for idx, cumle in enumerate(cumleler):
         puan = 0
         kelime_listesi = re.findall(r'\w+', cumle.lower())
-        if len(kelime_listesi) < 5 or len(kelime_listesi) > 25:
+        if len(kelime_listesi) < 4 or len(kelime_listesi) > 30:
             continue
         for kelime in kelime_listesi:
             if kelime in frekanslar:
@@ -81,9 +82,9 @@ def yerel_mantik_ozetleyici(metin, dil="tr"):
         cumle_puanlari[idx] = puan
 
     if not cumle_puanlari:
-        return [c for c in cumleler[:5]]
+        return [c for c in cumleler[:madde_sayisi]]
 
-    en_iyi_indeksler = sorted(cumle_puanlari, key=cumle_puanlari.get, reverse=True)[:5]
+    en_iyi_indeksler = sorted(cumle_puanlari, key=cumle_puanlari.get, reverse=True)[:madde_sayisi]
     en_iyi_indeksler.sort()
 
     sonuc = []
@@ -149,7 +150,7 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
     return None, "tr"
 
 # --- SIDEBAR ---
-st.sidebar.title("📜 Özet Geçmişiniz")
+st.sidebar.title("📜 Analiz Geçmişiniz")
 gecmis = veritabani_yukle()
 if gecmis:
     for sira, g in enumerate(gecmis[:10]):
@@ -167,21 +168,24 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
     st.rerun()
 
 # --- ANA SAYFA ---
-st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
-st.write("Hafıza Sıfırlama ve Çökme Korumalı En Kararlı Sürüm")
+st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
+st.write("Sıfır Dış Bağımlılık, Dinamik Analiz ve Maksimum Kararlılık Sürümü")
 st.divider()
 
 if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
-    st.info("📂 **Geçmiş Özet Görüntüleniyor**")
+    st.info("📂 **Geçmiş Analiz Görüntüleniyor**")
     g = st.session_state["aktif_ozet"]
     st.success(f"✅ Analiz Tarihi: {g.get('tarih','')} - {g.get('saat','')}")
     for m in g.get('ozet', []): 
         st.write(m)
-    if st.button("➕ Yeni Özet Ekranına Dön"):
+    if st.button("➕ Yeni Analiz Ekranına Dön"):
         st.session_state["aktif_ozet"] = None
         st.rerun()
 else:
     mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
+    
+    # Yeni eklenen dinamik madde sayısı seçici kontrolü
+    madde_limiti = st.select_slider("Çıkarılacak Kritik Madde Sayısı:", options=[5, 10, 15], value=5)
     
     if mod == "📺 YouTube Videosu":
         video_linki = st.text_input("YouTube Linki veya Kodu:", value="1OkydHdhABQ")
@@ -190,44 +194,37 @@ else:
             PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
             CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
             
-            with st.spinner("📥 Altyazılar indiriliyor..."):
+            with st.spinner("📥 Altyazılar başarıyla indiriliyor..."):
                 metin, altyazi_dili = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
                 
             if not metin:
                 st.error("Altyazı indirilemedi. Videonun altyazı içerdiğinden emin olun.")
             else:
-                with st.spinner("🤖 Kritik noktalar hesaplanıyor..."):
-                    ham_maddeler = yerel_mantik_ozetleyici(metin, dil=altyazi_dili)
-                    emojiler = ["📌", "📊", "💡", "⚙️", "🎯"]
-                    ozet_maddeleri = [f"{emojiler[i % 5]} {m}" for i, m in enumerate(ham_maddeler)]
-                    tum_maddeler_metin = "\n".join([f"- {m}" for m in ham_maddeler])
+                with st.spinner(f"🤖 Yapay zeka {madde_limiti} kritik maddeyi yapılandırıyor..."):
+                    ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil=altyazi_dili)
+                    emojiler = ["📌", "📊", "💡", "⚙️", "🎯", "🚀", "🔑", "💎", "📣", "📝", "🧠", "🔥", "⚡", "🍀", "🎯"]
+                    ozet_maddeleri = [f"{emojiler[i % len(emojiler)]} {m}" for i, m in enumerate(ham_maddeler)]
                     
                 simdi = datetime.now()
                 veritabani_kaydet({"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri})
                 
-                st.success("✅ Analiz Başarıyla Tamamlandı!")
+                st.success(f"✅ {madde_limiti} Maddelik Analiz Başarıyla Tamamlandı!")
                 for madde in ozet_maddeleri:
                     st.write(madde)
-                    
-                if altyazi_dili == "en":
-                    st.divider()
-                    st.info("💡 İngilizce içerik saptandı. Aşağıdaki butona tıklayarak maddeleri Google Translate ile hızlıca Türkçe'ye çevirebilirsiniz:")
-                    st.markdown(f'<a href="https://google.com" target="_blank" style="display:inline-block; background-color:#2cbd5d; color:white; padding:10px 20px; border-radius:6px; text-decoration:none; font-weight:bold;">🌐 Google Translate Sayfasını Aç</a>', unsafe_allow_html=True)
-                    st.text_area("📋 Kopyalanacak Maddeler:", value=tum_maddeler_metin, height=120)
                     
                 with st.expander("📝 İşlenen Ham Kaynak Metni Görüntüle"):
                     st.caption(metin)
                     
     elif mod == "📝 Uzun Metin":
-        girilen_metin = st.text_area("Özetlenecek Metni Girin:", height=200)
-        if st.button("Metni Özetle"):
+        girilen_metin = st.text_area("Yorumlanacak Uzun Metni Girin:", height=200)
+        if st.button("Metni Analiz Et"):
             if not girilen_metin.strip():
                 st.warning("Metin alanı boş bırakılamaz.")
             else:
-                with st.spinner("🤖 Mantıksal süzgeç çalışıyor..."):
-                    ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, dil="tr")
-                    emojiler = ["📌", "📊", "💡", "⚙️", "🎯"]
-                    ozet_maddeleri = [f"{emojiler[i % 5]} {m}" for i, m in enumerate(ham_maddeler)]
+                with st.spinner(f"🤖 Süzgeç çalışıyor ({madde_limiti} Madde)..."):
+                    ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti, dil="tr")
+                    emojiler = ["📌", "📊", "💡", "⚙️", "🎯", "🚀", "🔑", "💎", "📣", "📝", "🧠", "🔥", "⚡", "🍀", "🎯"]
+                    ozet_maddeleri = [f"{emojiler[i % len(emojiler)]} {m}" for i, m in enumerate(ham_maddeler)]
                     
                 st.success("✅ İşlem Başarılı!")
                 for madde in ozet_maddeleri:
