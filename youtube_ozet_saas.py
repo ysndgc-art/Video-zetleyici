@@ -14,7 +14,7 @@ import io
 # Web Sayfası Tasarımı
 st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
 
-# --- VERİBATANI (JSON) FONKSiyonLARI ---
+# --- VERİBATANI (JSON) FONKSİYONLARI ---
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
 
 def veritabani_yukle():
