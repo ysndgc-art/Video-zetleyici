@@ -10,7 +10,6 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 import io
-import urllib.request
 
 # Web Sayfası Tasarımı
 st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
@@ -157,7 +156,7 @@ else:
 
     # TAB 1: YOUTUBE ÖZETLEME
     with sekme1:
-        st.subheader("🚀 Sadece Linki Yapıştırın ve Arkaya Yaslanın")
+        st.subheader("🚀 Sadece Linki Yapıştırın")
         video_linki = st.text_input("YouTube Linkini veya Video Kodunu Girin:", placeholder="Örn: https://youtube.com", key="yt_input")
         
         if st.button("Videoyu Analiz Et ve Özetle", key="yt_btn"):
@@ -172,12 +171,12 @@ else:
                     metin_to_process = ""
                     
                     with st.spinner("🤖 Güvenlik duvarları aşılıyor ve altyazılar otomatik çekiliyor..."):
-                        # 1. DENEME: Standart Doğrudan Çekme
+                        # 1. DENEME: Doğrudan Çekme
                         try:
                             konusma_verisi = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
                             metin_to_process = " ".join([parca['text'] for parca in konusma_verisi])
                         except:
-                            # 2. DENEME: Sunucu Engellendiyse Ücretsiz Küresel Proxy Sunucuları ile Arkadan Dolaşma
+                            # 2. DENEME: Ücretsiz Küresel Proxy Sunucuları ile Arkadan Dolaşma
                             ücretsiz_proxiler = [
                                 "http://45.77.53.111:3128",
                                 "http://185.195.20.12:80",
@@ -195,7 +194,6 @@ else:
                                     continue
                     
                     if metin_to_process:
-                        # Çevre değişkenlerini temizle (Sitenin diğer isteklerini bozmasın)
                         os.environ.pop("http_proxy", None)
                         os.environ.pop("https_proxy", None)
                         
@@ -209,7 +207,6 @@ else:
                         ozeti_ekrana_yazdir(t_sn, s_sn, metin_to_process, yapay_zeka_ozeti)
                     else:
                         st.error("❌ YouTube bu videonun dış sunuculardan indirilmesini tamamen engellemiş veya videoda aktif bir altyazı bulunmuyor.")
-                        st.info("💡 Lütfen altyazısının açık olduğundan emin olduğunuz başka bir video linkiyle tekrar deneyin.")
 
     # TAB 2: METİN ÖZETLEME
     with sekme2:
@@ -219,3 +216,9 @@ else:
                 st.warning("Lütfen metin girin!")
             else:
                 with st.spinner("Metin analiz ediliyor..."):
+                    yapay_zeka_ozeti = akilli_yerel_ozetleyici(uzun_metin)
+                
+                simdi = datetime.now()
+                t_sn = simdi.strftime("%d.%m.%Y")
+                s_sn = simdi.strftime("%H:%M")
+                veritabani_kaydet({"tarih": t_sn, "saat": s_sn, "metin": uzun_metin, "ozet": yapay_zeka_ozeti})
