@@ -20,8 +20,10 @@ VERITABANI_DOSYASI = "ozet_gecmisi.json"
 def veritabani_yukle():
     if os.path.exists(VERITABANI_DOSYASI):
         with open(VERITABANI_DOSYASI, "r", encoding="utf-8") as f:
-            try: return json.load(f)
-            except: return []
+            try: 
+                return json.load(f)
+            except: 
+                return []
     return []
 
 def veritabani_kaydet(yeni_ozet):
@@ -227,4 +229,3 @@ else:
                     yeni_kayit = {
                         "tarih": tarih,
                         "saat": saat,
-                        "metin": girilen_metin,
