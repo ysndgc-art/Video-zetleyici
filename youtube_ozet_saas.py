@@ -4,6 +4,7 @@ import os
 import re
 from datetime import datetime
 import yt_dlp
+from youtube_transcript_api import YouTubeTranscriptApi
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -126,8 +127,25 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5, dil="tr"):
                 sonuc.append(ham_cumle)
     return sonuc
 
-def ytdlp_altyazi_cek(video_id, cerez_yolu):
+def akilli_altyazi_indirici(video_id, cerez_yolu):
     safe_id = str(video_id).strip()
+    
+    # 1. YÖNTEM: Resmi Altyazı API'si (En Güvenlisi, Bot Engellerine Takılmaz)
+    try:
+        altyazi_listesi = YouTubeTranscriptApi.list_transcripts(safe_id)
+        try:
+            transcript = altyazi_listesi.find_transcript(['tr', 'en'])
+        except:
+            transcript = altyazi_listesi.find_generated_transcript(['tr', 'en'])
+            
+        veri = transcript.fetch()
+        metin = " ".join([parca['text'] for parca in veri])
+        if metin.strip():
+            return metin, transcript.language_code
+    except:
+        pass
+
+    # 2. YÖNTEM: Yedek Olarak yt-dlp Motoru
     ydl_opts = {
         'writesubtitles': True,
         'writeautomaticsub': True,
@@ -140,16 +158,9 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
         'ie_key': 'Youtube',
         'socket_timeout': 20,
         'retries': 3,
-        'extractor_args': {
-            'youtube': {
-                'clients': ['web', 'mweb', 'tv', 'android'],
-                'skip': ['dash', 'hls']
-            }
-        },
+        'extractor_args': {'youtube': {'clients': ['web', 'mweb', 'tv', 'android'], 'skip': ['dash', 'hls']}},
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
         }
     }
     try:
@@ -202,7 +213,6 @@ st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
 st.write("Gelişmiş İstatistik Paneli ve Kolay Dışa Aktarma Sistemi")
 st.divider()
 
-# Giriş Elemanları Akışı
 mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
@@ -219,24 +229,13 @@ if mod == "📺 YouTube Videosu":
                 v_id = youtube_id_bul_kesin(video_linki)
                 PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
                 CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
-                with st.spinner("📥 Altyazılar indiriliyor..."):
-                    metin, altyazi_dili = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
+                with st.spinner("📥 Altyazılar API üzerinden güvenli çekiliyor..."):
+                    metin, altyazi_dili = akilli_altyazi_indirici(v_id, CEREZ_YOLU)
                 if not metin:
-                    st.error("YouTube sunucularından altyazı çekilemedi. Video gizli olabilir veya altyazı içermiyor olabilir.")
+                    st.error("YouTube korumaları aşılamadı veya bu videoda altyazı yok. Lütfen video ayarlarından altyazıların aktif olduğunu kontrol edin.")
                 else:
                     with st.spinner("🤖 Yapay zeka maddeleri çıkarıyor..."):
                         ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil=altyazi_dili)
                         ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
                     simdi = datetime.now()
                     veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri}
-                    gecmis_ekle(veri_paketi)
-                    st.session_state["aktif_ozet"] = veri_paketi
-                    st.rerun()
-
-else:
-    girilen_metin = st.text_area("Yorumlanacak Uzun Metni Girin:", height=200, key="text_area_box")
-    if st.button("Metni Analiz Et", key="text_btn"):
-        if not girilen_metin.strip():
-            st.warning("Lütfen metin girin.")
-        else:
-            ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti, dil="tr")
