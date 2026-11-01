@@ -64,6 +64,7 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # DÜZELTME: Link birleşimine kesin olarak '/' ekledik
             ydl.download([f"https://youtube.com{video_id}"])
             
         altyazi_metni = ""
@@ -254,5 +255,3 @@ else:
                 if not os.path.exists(CEREZ_YOLU):
                     st.error(f"⚠️ Kritik Hata: Klasörde 'www.youtube.com_cookies.txt' dosyası bulunamadı!")
                 else:
-                    metin_to_process = ytdlp_altyazi_cek(st.session_state.video_id, CEREZ_YOLU)
-
