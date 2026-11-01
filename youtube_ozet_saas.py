@@ -169,11 +169,14 @@ else:
                 else:
                     st.info(f"🔍 Sistem: Video Kodu '{video_id}' başarıyla doğrulandı. Çerez korumalı altyazı motoru başlatılıyor...")
                     metin_to_process = ""
-                    CEREZ_YOLU = "youtube_cookies.txt"
+                    
+                    # Dinamik dosya yolu tanımı (Sizin belirttiğiniz dosya adı ile güncellendi)
+                    PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
+                    CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
                     
                     with st.spinner("🤖 Güvenlik duvarları aşılıyor ve altyazılar güvenli çerezle çekiliyor..."):
                         if not os.path.exists(CEREZ_YOLU):
-                            st.error(f"⚠️ Kritik Hata: Klasörde '{CEREZ_YOLU}' dosyası bulunamadı! Lütfen dosyayı indirdiğinizden ve ana klasöre eklediğinizden emin olun.")
+                            st.error(f"⚠️ Kritik Hata: Klasörde 'www.youtube.com_cookies.txt' dosyası bulunamadı! Lütfen bu dosyanın '{PROJE_DIZINI}' dizininde olduğundan emin olun.")
                         else:
                             try:
                                 # 1. ADIM: Çerez kullanarak videonun altyazı listesini çek
@@ -218,9 +221,3 @@ else:
         
         if st.button("Metni Analiz Et ve Özetle", key="text_btn"):
             if not girilen_metin.strip():
-                st.warning("Lütfen boş bir metin bırakmayın!")
-            else:
-                simdi = datetime.now()
-                tarih = simdi.strftime("%d.%m.%Y")
-                saat = simdi.strftime("%H:%M:%S")
-                
