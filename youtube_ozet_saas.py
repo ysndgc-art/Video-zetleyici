@@ -138,19 +138,28 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
         'quiet': True,
         'no_warnings': True,
         'ie_key': 'Youtube',
-        # Güvenlik ve Donma Önleme Parametreleri
-        'socket_timeout': 15,          # 15 saniyede sunucu yanıt vermezse işlemi iptal et
-        'retries': 2,                  # En fazla 2 kez tekrar dene
+        'socket_timeout': 20,
+        'retries': 3,
+        # 🤖 Bot Engellemesini Aşmak İçin Gelişmiş İstemci Maskelemeleri
+        'extractor_args': {
+            'youtube': {
+                'clients': ['web', 'mweb', 'tv', 'android'],
+                'skip': ['dash', 'hls']
+            }
+        },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
         }
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([safe_id])
         bulunan_dosya = None
+        # VTT, SRT ve diğer altyazi uzantılarını tarama listesine dahil et
         for dosya in os.listdir("."):
-            if dosya.startswith(f"sub_{safe_id}") and (dosya.endswith(".vtt") or dosya.endswith(".srt")):
+            if dosya.startswith(f"sub_{safe_id}") and any(dosya.endswith(ext) for ext in [".vtt", ".srt", ".ttml", ".srv3"]):
                 bulunan_dosya = dosya
                 break
         if bulunan_dosya and os.path.exists(bulunan_dosya):
@@ -233,9 +242,3 @@ if mod == "📝 Uzun Metin":
     girilen_metin = st.text_area("Yorumlanacak Uzun Metni Girin:", height=200)
     if st.button("Metni Analiz Et"):
         if not girilen_metin.strip():
-            st.warning("Lütfen metin girin.")
-        else:
-            with st.spinner("🤖 Analiz ediliyor..."):
-                ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti, dil="tr")
-                ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler]
-            simdi = datetime.now()
