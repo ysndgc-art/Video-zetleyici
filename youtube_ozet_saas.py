@@ -90,7 +90,7 @@ def yapay_zeka_ozetle(altyazi_metni):
                 return "❌ Model uyandırma aşamasında API bağlantısı koptu. Lütfen tekrar deneyin."
             
         if isinstance(res_json, list) and len(res_json) > 0:
-            text_field = res_json.get("generated_text", "")
+            text_field = res_json[0].get("generated_text", "")
             return text_field.replace(prompt, "").strip()
         elif isinstance(res_json, dict) and "generated_text" in res_json:
             return res_json["generated_text"].replace(prompt, "").strip()
@@ -168,7 +168,7 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
         st.error(f"Altyazı Motor Hatası: {str(e)}")
     return None
 
-# --- MOD SAYFALARI (SIFIR GİRİNTİ RİSKİ) ---
+# --- MOD SAYFALARI ---
 def youtube_sayfasi_calistir():
     video_linki = st.text_input("YouTube Linki veya Kodu:", value="1OkydHdhABQ")
     if st.button("Videoyu Yapay Zekayla Analiz Et"):
@@ -222,4 +222,5 @@ def metin_sayfasi_calistir():
         if "❌" in ai_ozet or "⚠️" in ai_ozet or "⏳" in ai_ozet:
             st.error(ai_ozet)
         else:
-            st.success("✅ İşlem Başarıllı!")
+            st.success("✅ İşlem Başarılı!")
+            st.subheader("📊 Yapay Zeka Analizi:")
