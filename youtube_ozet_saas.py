@@ -169,9 +169,10 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
 
 # --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
-st.write("Girdi Çakışmaları ve Söz Dizimi Hataları Tamamen Giderilmiş Kararlı Sürüm")
+st.write("Sıfır Girinti Riski, Maksimum Kararlılık Yapısı Aktif")
 st.divider()
 
+# Hafıza kilitlenmesini çözen aktif özet yönlendirmesi
 if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
     st.info("📂 **Geçmiş Analiz Görüntüleniyor**")
     g = st.session_state["aktif_ozet"]
@@ -181,52 +182,59 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
     if st.button("➕ Yeni Analiz Ekranına Dön"):
         st.session_state["aktif_ozet"] = None
         st.rerun()
-else:
-    mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
+    st.stop()
+
+# --- SEÇİM BARI VE KONTROLLER ---
+mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
+madde_limiti = st.select_slider("Çıkarılacak Kritik Madde Sayısı:", options=[5, 10, 15], value=5)
+
+# --- 📺 YOUTUBE MODU İŞLEMLERİ ---
+if mod == "📺 YouTube Videosu":
+    video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="Örn: https://youtube.com...", key="video_url_girdisi")
     
-    madde_limiti = st.select_slider("Çıkarılacak Kritik Madde Sayısı:", options=[5, 10, 15], value=5)
-    
-    if mod == "📺 YouTube Videosu":
-        video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="Örn: https://youtube.com...", key="video_url_girdisi")
-        
-        if st.button("Videoyu Analiz Et"):
-            if not video_linki.strip():
-                st.warning("Lütfen analiz etmek için geçerli bir YouTube URL'si veya video kodu girin.")
-            else:
-                st.cache_data.clear()
-                v_id = youtube_id_bul_kesin(video_url_girdisi if 'video_url_girdisi' in st.session_state else video_linki)
-                PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
-                CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
+    if st.button("Videoyu Analiz Et"):
+        if not video_linki.strip():
+            st.warning("Lütfen analiz etmek için geçerli bir YouTube URL'si veya video kodu girin.")
+        else:
+            st.cache_data.clear()
+            v_id = youtube_id_bul_kesin(video_linki)
+            PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
+            CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
+            
+            with st.spinner("📥 Yeni videonun altyazıları indiriliyor..."):
+                metin, altyazi_dili = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
                 
-                with st.spinner("📥 Yeni videonun altyazıları indiriliyor..."):
-                    metin, altyazi_dili = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
+            if not metin:
+                st.error("Altyazı indirilemedi. Girdiğiniz linkin doğruluğundan ve videonun altyazı içerdiğinden emin olun.")
+            else:
+                with st.spinner(f"🤖 Yapay zeka yeni girdi için {madde_limiti} kritik maddeyi yapılandırıyor..."):
+                    ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil=altyazi_dili)
+                    emojiler = ["📌", "📊", "💡", "⚙️", "🎯", "🚀", "🔑", "💎", "📣", "📝", "🧠", "🔥", "⚡", "🍀", "🎯"]
+                    ozet_maddeleri = [f"{emojiler[i % len(emojiler)]} {m}" for i, m in enumerate(ham_maddeler)]
+                    tum_maddeler_metin = "\n".join([f"- {m}" for m in ham_maddeler])
                     
-                if not metin:
-                    st.error("Altyazı indirilemedi. Girdiğiniz linkin doğruluğundan ve videonun altyazı içerdiğinden emin olun.")
-                else:
-                    with st.spinner(f"🤖 Yapay zeka yeni girdi için {madde_limiti} kritik maddeyi yapılandırıyor..."):
-                        ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil=altyazi_dili)
-                        emojiler = ["📌", "📊", "💡", "⚙️", "🎯", "🚀", "🔑", "💎", "📣", "📝", "🧠", "🔥", "⚡", "🍀", "🎯"]
-                        ozet_maddeleri = [f"{emojiler[i % len(emojiler)]} {m}" for i, m in enumerate(ham_maddeler)]
-                        tum_maddeler_metin = "\n".join([f"- {m}" for m in ham_maddeler])
-                        
-                    simdi = datetime.now()
-                    veritabani_kaydet({"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri})
+                simdi = datetime.now()
+                veritabani_kaydet({"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri})
+                
+                st.success(f"✅ {madde_limiti} Maddelik Yeni Analiz Başarıyla Tamamlandı!")
+                for madde in ozet_maddeleri:
+                    st.write(madde)
                     
-                    st.success(f"✅ {madde_limiti} Maddelik Yeni Analiz Başarıyla Tamamlandı!")
-                    for madde in ozet_maddeleri:
-                        st.write(madde)
-                        
-                    if altyazi_dili == "en":
-                        st.divider()
-                        st.info("💡 İngilizce içerik saptandı. Aşağıdaki butona tıklayarak maddeleri Google Translate ile hızlıca Türkçe'ye çevirebilirsiniz:")
-                        st.markdown(f'<a href="https://google.com" target="_blank" style="display:inline-block; background-color:#2cbd5d; color:white; padding:10px 20px; border-radius:6px; text-decoration:none; font-weight:bold;">🌐 Google Translate Sayfasını Aç</a>', unsafe_allow_html=True)
-                        st.text_area("📋 Kopyalanacak Maddeler:", value=tum_maddeler_metin, height=120)
-                        
-                    with st.expander("📝 İşlenen Ham Kaynak Metni Görüntüle"):
-                        st.caption(metin)
-                        
-    elif mod == "📝 Uzun Metin":
-        girilen_metin = st.text_area("Yorumlanacak Uzun Metni Girin:", height=200, key="metin_alan_girdisi")
-        if st.button("Metni Analiz Et"):
-            if not girilen_metin.strip():
+                if altyazi_dili == "en":
+                    st.divider()
+                    st.info("💡 İngilizce içerik saptandı. Aşağıdaki butona tıklayarak maddeleri Google Translate ile hızlıca Türkçe'ye çevirebilirsiniz:")
+                    st.markdown(f'<a href="https://google.com" target="_blank" style="display:inline-block; background-color:#2cbd5d; color:white; padding:10px 20px; border-radius:6px; text-decoration:none; font-weight:bold;">🌐 Google Translate Sayfasını Aç</a>', unsafe_allow_html=True)
+                    st.text_area("📋 Kopyalanacak Maddeler:", value=tum_maddeler_metin, height=120)
+                    
+                with st.expander("📝 İşlenen Ham Kaynak Metni Görüntüle"):
+                    st.caption(metin)
+
+# --- 📝 METİN MODU İŞLEMLERİ ---
+if mod == "📝 Uzun Metin":
+    girilen_metin = st.text_area("Yorumlanacak Uzun Metni Girin:", height=200, key="metin_alan_girdisi")
+    
+    if st.button("Metni Analiz Et"):
+        if not girilen_metin.strip():
+            st.warning("Metin alanı boş bırakılamaz.")
+        else:
+            with st.spinner(f"🤖 Süzgeç çalışıyor ({madde_limiti} Madde)..."):
