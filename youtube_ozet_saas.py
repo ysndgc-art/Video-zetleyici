@@ -9,6 +9,7 @@ import yt_dlp
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
 
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
+GUNLUK_UCRETSIZ_LIMIT = 10
 
 def veritabani_yukle():
     try:
@@ -17,17 +18,38 @@ def veritabani_yukle():
                 return json.load(f)
     except:
         pass
-    return []
+    return {"gecmis": [], "kota": {}}
 
-def veritabani_kaydet(yeni_ozet):
+def veritabani_kaydet(veri):
     try:
-        gecmis = veritabani_yukle()
-        if not any(g.get('metin', '')[:30] == yeni_ozet['metin'][:30] for g in gecmis if 'metin' in g):
-            gecmis.insert(0, yeni_ozet)
-            with open(VERITABANI_DOSYASI, "w", encoding="utf-8") as f:
-                json.dump(gecmis, f, ensure_ascii=False, indent=4)
+        with open(VERITABANI_DOSYASI, "w", encoding="utf-8") as f:
+            json.dump(veri, f, ensure_ascii=False, indent=4)
     except:
         pass
+
+def kota_kontrol_ve_guncelle():
+    veri = veritabani_yukle()
+    if not isinstance(veri, dict) or "kota" not in veri:
+        veri = {"gecmis": [], "kota": {}}
+        
+    bugun = datetime.now().strftime("%d.%m.%Y")
+    mevcut_kota = veri["kota"].get(bugun, 0)
+    
+    if mevcut_kota >= GUNLUK_UCRETSIZ_LIMIT:
+        return False, mevcut_kota
+        
+    veri["kota"][bugun] = mevcut_kota + 1
+    veritabani_kaydet(veri)
+    return True, mevcut_kota + 1
+
+def gecmis_ekle(yeni_ozet):
+    veri = veritabani_yukle()
+    if not isinstance(veri, dict) or "gecmis" not in veri:
+        veri = {"gecmis": [], "kota": {}}
+        
+    if not any(g.get('metin', '')[:30] == yeni_ozet['metin'][:30] for g in veri["gecmis"]):
+        veri["gecmis"].insert(0, yeni_ozet)
+        veritabani_kaydet(veri)
 
 def youtube_id_bul_kesin(link):
     girdi = str(link).strip()
@@ -151,15 +173,30 @@ def ytdlp_altyazi_cek(video_id, cerez_yolu):
 
 # --- SIDEBAR ---
 st.sidebar.title("📜 Analiz Geçmişiniz")
-gecmis = veritabani_yukle()
-if gecmis:
-    for sira, g in enumerate(gecmis[:10]):
+veri_havuzu = veritabani_yukle()
+gecmis_listesi = veri_havuzu.get("gecmis", []) if isinstance(veri_havuzu, dict) else []
+kota_havuzu = veri_havuzu.get("kota", {}) if isinstance(veri_havuzu, dict) else {}
+
+if gecmis_listesi:
+    for sira, g in enumerate(gecmis_listesi[:10]):
         if st.sidebar.button(f"⏱️ {g.get('saat','')} - {g.get('metin','')[:15]}...", key=f"hist_{sira}"):
             st.session_state["aktif_ozet"] = g
 else:
     st.sidebar.info("Henüz geçmiş analiz bulunmuyor.")
 
 st.sidebar.divider()
+
+# KOTA GÖSTERGE PANELİ
+bugun_str = datetime.now().strftime("%d.%m.%Y")
+bugunku_kullanim = kota_havuzu.get(bugun_str, 0)
+st.sidebar.subheader("📊 Günlük Kullanım Kotası")
+st.sidebar.write(f"Bugün Kullanılan: **{bugunku_kullanim} / {GUNLUK_UCRETSIZ_LIMIT}**")
+kalan_hak = GUNLUK_UCRETSIZ_LIMIT - bugunku_kullanim
+if kalan_hak > 0:
+    st.sidebar.success(f"🔓 {kalan_hak} adet ücretsiz analiz hakkınız kaldı.")
+else:
+    st.sidebar.error("⚠️ Günlük ücretsiz limitiniz doldu! Ek analizler ücrete tabidir.")
+
 if st.sidebar.button("🗑️ Geçmişi Temizle"):
     if os.path.exists(VERITABANI_DOSYASI):
         try: os.remove(VERITABANI_DOSYASI)
@@ -169,15 +206,22 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
 
 # --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
-st.write("Sıfır Girinti Riski, Maksimum Kararlılık Yapısı Aktif")
+st.write("Kota Limitli ve PDF/TXT Dışa Aktarma Destekli Ticari Sürüm")
 st.divider()
 
 if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"]:
     st.info("📂 **Geçmiş Analiz Görüntüleniyor**")
     g = st.session_state["aktif_ozet"]
     st.success(f"✅ Analiz Tarihi: {g.get('tarih','')} - {g.get('saat','')}")
+    
+    cikis_metni = f"--- AI VIDEO & METIN ANALIZ RAPORU ---\nTarih: {g.get('tarih','')}\n\nÇıkarılan Maddeler:\n"
     for m in g.get('ozet', []): 
         st.write(m)
+        cikis_metni += f"{m}\n"
+        
+    st.divider()
+    st.download_button(label="📥 Raporu TXT Olarak İndir", data=cikis_metni.encode('utf-8'), file_name=f"analiz_raporu_{g.get('saat','')}.txt", mime="text/plain")
+    
     if st.button("➕ Yeni Analiz Ekranına Dön"):
         st.session_state["aktif_ozet"] = None
         st.rerun()
@@ -194,46 +238,19 @@ if mod == "📺 YouTube Videosu":
         if not video_linki.strip():
             st.warning("Lütfen analiz etmek için geçerli bir YouTube URL'si veya video kodu girin.")
         else:
-            st.cache_data.clear()
-            v_id = youtube_id_bul_kesin(video_linki)
-            PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
-            CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
+            # ÖNCE KOTA KONTROLÜ YAPILIYOR
+            izin_verildi, guncel_sayac = kota_kontrol_ve_guncelle()
             
-            with st.spinner("📥 Yeni videonun altyazıları indiriliyor..."):
-                metin, altyazi_dili = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
-                
-            if not metin:
-                st.error("Altyazı indirilemedi. Girdiğiniz linkin doğruluğundan ve videonun altyazı içerdiğinden emin olun.")
+            if not izin_verildi:
+                st.error("❌ **Günlük 10 Ücretsiz Video Sınırına Ulaştınız!**")
+                st.info("💡 Devam etmek ve sınırsız analiz paketine geçmek için lütfen **Premium SaaS** planına abone olun. (Ödeme Entegrasyonu Sayfasına Yönlendiriliyorsunuz...)")
+                st.markdown('<button style="background-color:#ff4b4b; color:white; border:none; padding:12px 24px; font-weight:bold; border-radius:6px; cursor:pointer;">💳 Premium Üyeliğe Yükselt ($9.99/Ay)</button>', unsafe_allow_html=True)
             else:
-                with st.spinner(f"🤖 Yapay zeka yeni girdi için {madde_limiti} kritik maddeyi yapılandırıyor..."):
-                    ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil=altyazi_dili)
-                    emojiler = ["📌", "📊", "💡", "⚙️", "🎯", "🚀", "🔑", "💎", "📣", "📝", "🧠", "🔥", "⚡", "🍀", "🎯"]
-                    ozet_maddeleri = [f"{emojiler[i % len(emojiler)]} {m}" for i, m in enumerate(ham_maddeler)]
-                    tum_maddeler_metin = "\n".join([f"- {m}" for m in ham_maddeler])
-                    
-                simdi = datetime.now()
-                veritabani_kaydet({"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri})
+                st.cache_data.clear()
+                v_id = youtube_id_bul_kesin(video_linki)
+                PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
+                CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
                 
-                st.success(f"✅ {madde_limiti} Maddelik Yeni Analiz Başarıyla Tamamlandı!")
-                for madde in ozet_maddeleri:
-                    st.write(madde)
+                with st.spinner("📥 Yeni videonun altyazıları indiriliyor..."):
+                    metin, altyazi_dili = ytdlp_altyazi_cek(v_id, CEREZ_YOLU)
                     
-                if altyazi_dili == "en":
-                    st.divider()
-                    st.info("💡 İngilizce içerik saptandı. Aşağıdaki butona tıklayarak maddeleri Google Translate ile hızlıca Türkçe'ye çevirebilirsiniz:")
-                    st.markdown(f'<a href="https://google.com" target="_blank" style="display:inline-block; background-color:#2cbd5d; color:white; padding:10px 20px; border-radius:6px; text-decoration:none; font-weight:bold;">🌐 Google Translate Sayfasını Aç</a>', unsafe_allow_html=True)
-                    st.text_area("📋 Kopyalanacak Maddeler:", value=tum_maddeler_metin, height=120)
-                    
-                with st.expander("📝 İşlenen Ham Kaynak Metni Görüntüle"):
-                    st.caption(metin)
-
-# --- 📝 METİN MODU İŞLEMLERİ ---
-if mod == "📝 Uzun Metin":
-    girilen_metin = st.text_area("Yorumlanacak Uzun Metni Girin:", height=200, key="metin_alan_girdisi")
-    
-    if st.button("Metni Analiz Et"):
-        if not girilen_metin.strip():
-            st.warning("Metin alanı boş bırakılamaz.")
-        else:
-            with st.spinner(f"🤖 Süzgeç çalışıyor ({madde_limiti} Madde)..."):
-                ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti, dil="tr")
