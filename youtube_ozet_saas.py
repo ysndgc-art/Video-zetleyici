@@ -4,6 +4,7 @@ import os
 import re
 from datetime import datetime
 import yt_dlp
+import streamlit.components.v1 as components
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
@@ -176,9 +177,25 @@ def youtube_modu_calistir():
         veritabani_kaydet({"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri})
         
         st.success("✅ Analiz Başarıyla Tamamlandı!")
-        st.subheader("📊 Yapılandırılmış Kritik Özet Maddeleri:")
         
-        # Tarayıcı tabanlı sıfır kilitlenme riskli otomatik Google entegrasyonu
+        # Eğer video İngilizce ise otomatik tarayıcı çeviri barını tetikle
+        if altyazi_dili == "en":
+            st.info("🌐 İngilizce içerik algılandı. Tarayıcı tabanlı anlık çeviri motoru aktif.")
+            components.html("""
+                <div id="google_translate_element"></div>
+                <script type="text/javascript">
+                function googleTranslateElementInit() {
+                  new google.translate.TranslateElement({pageLanguage: 'en', layout: google.translate.TranslateElement.InlineLayout.SIMPLE}, 'google_translate_element');
+                  setTimeout(function() {
+                     var select = document.querySelector('select.goog-te-combo');
+                     if(select) { select.value = 'tr'; select.dispatchEvent(new Event('change')); }
+                  }, 1000);
+                }
+                </script>
+                <script type="text/javascript" src="//://google.com"></script>
+            """, height=60)
+            
+        st.subheader("📊 Yapılandırılmış Kritik Özet Maddeleri:")
         for madde in ozet_maddeleri:
             st.write(madde)
             
@@ -221,7 +238,7 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
 
 # --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
-st.write("Sıfır Kilitlenme Riskli UI Yapısı Aktif")
+st.write("Tarayıcı Tabanlı Otomatik Çeviri Destekli Stabil Sürüm")
 st.divider()
 
 if "aktif_ozet" in st.session_state:
@@ -232,10 +249,3 @@ if "aktif_ozet" in st.session_state:
     for m in g['ozet']: st.write(m)
     if st.button("➕ Yeni Özet Ekranına Dön"):
         del st.session_state["aktif_ozet"]
-        st.rerun()
-else:
-    mod = st.radio("Mod Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
-    if mod == "📺 YouTube Videosu":
-        youtube_modu_calistir()
-    if mod == "📝 Uzun Metin":
-        metin_modu_calistir()
