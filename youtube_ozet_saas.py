@@ -35,11 +35,10 @@ def youtube_id_bul_kesin(link):
                 return parca
     return girdi
 
-# --- 🌐 %100 YEREL (OFFLINE) SÖZLÜKSEL ÇEVİRİ MOTORU ---
+# --- 🌐 %100 YEREL VE HAFİF ÇEVİRİ MOTORU ---
 def yerel_sozluk_cevirisi(madde_listesi):
-    # Sözlük yapısı tamamen düzeltildi ve iki nokta hatası giderildi
     sozluk = {
-        "the": "", "and": "ve", "to": "-e", "of": "ait", "a": "bir", "in": "içinde", "is": "dır", "that": "şu",
+        "and": "ve", "to": "-e", "of": "ait", "in": "içinde", "is": "dır", "that": "şu",
         "it": "o", "was": "idi", "for": "için", "on": "üzerinde", "are": "dırlar", "as": "olarak", "with": "ile",
         "this": "bu", "they": "onlar", "but": "ama", "what": "ne", "from": "-den", "your": "senin", "how": "nasıl",
         "video": "video", "channel": "kanal", "subscribe": "abone ol", "like": "beğen", "music": "müzik",
@@ -54,20 +53,20 @@ def yerel_sozluk_cevirisi(madde_listesi):
     emojiler = ["📌", "📊", "💡", "⚙️", "🎯"]
     
     for i, madde in enumerate(madde_listesi):
+        # Kilitlenmeyi önleyen hızlı kelime bazlı Regex değişimi
         kelimeler = madde.split()
-        yeni_cumle = []
+        yeni_kelimeler = []
         for k in kelimeler:
-            temiz_k = re.sub(r'[^\w]', '', k).lower()
-            if temiz_k in sozluk and sozluk[temiz_k] != "":
-                ek = k.replace(re.sub(r'[^\w]', '', k), sozluk[temiz_k])
-                yeni_cumle.append(ek)
-            else:
-                yeni_cumle.append(k)
-                
-        cumle_metni = " ".join(yeni_cumle).strip()
+            saf_kelime = re.sub(r'[^\w]', '', k).lower()
+            if saf_kelime in sozluk:
+                # Sadece kök kelimeyi değiştir, işaretleri koru
+                k = re.sub(r'\b' + saf_kelime + r'\b', sozluk[saf_kelime], k, flags=re.IGNORECASE)
+            yeni_kelimeler.append(k)
+            
+        cumle_metni = " ".join(yeni_kelimeler).strip()
         if cumle_metni:
             cumle_metni = cumle_metni[0].upper() + cumle_metni[1:]
-        cevirilmis_maddeler.append(f"{emojiler[i]} {cumle_metni}")
+        cevirilmis_maddeler.append(f"{emojiler[i % 5]} {cumle_metni}")
         
     return cevirilmis_maddeler
 
@@ -198,11 +197,11 @@ def youtube_modu_calistir():
         with st.spinner("🤖 2. Adım: Kritik noktalar hesaplanıyor..."):
             ham_maddeler = yerel_mantik_ozetleyici(metin, dil=altyazi_dili)
             if altyazi_dili == "en":
-                st.info("🌐 İngilizce içerik saptandı, hibrit güvenli çeviri devreye giriyor...")
+                st.info("🌐 İngilizce içerik saptandı, hafif yerel sözlük motoru çalışıyor...")
                 ozet_maddeleri = yerel_sozluk_cevirisi(ham_maddeler)
             else:
                 emojiler = ["📌", "📊", "💡", "⚙️", "🎯"]
-                ozet_maddeleri = [f"{emojiler[i]} {m}" for i, m in enumerate(ham_maddeler)]
+                ozet_maddeleri = [f"{emojiler[i % 5]} {m}" for i, m in enumerate(ham_maddeler)]
             
         simdi = datetime.now()
         veritabani_kaydet({"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri})
@@ -225,7 +224,7 @@ def metin_modu_calistir():
         with st.spinner("🤖 Mantıksal süzgeç çalışıyor..."):
             ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, dil="tr")
             emojiler = ["📌", "📊", "💡", "⚙️", "🎯"]
-            ozet_maddeleri = [f"{emojiler[i]} {m}" for i, m in enumerate(ham_maddeler)]
+            ozet_maddeleri = [f"{emojiler[i % 5]} {m}" for i, m in enumerate(ham_maddeler)]
             
         st.success("✅ İşlem Başarılı!")
         st.subheader("📊 Özet Maddeleri:")
