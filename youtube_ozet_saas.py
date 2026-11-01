@@ -167,35 +167,30 @@ else:
                 if not video_id:
                     st.error("❌ Geçersiz video kodu!")
                 else:
-                    st.info(f"🔍 Sistem: Video Kodu '{video_id}' başarıyla doğrulandı. Altyazı çekiliyor...")
+                    st.info(f"🔍 Sistem: Video Kodu '{video_id}' başarıyla doğrulandı. Çerez korumalı altyazı motoru başlatılıyor...")
                     metin_to_process = ""
+                    CEREZ_YOLU = "youtube_cookies.txt"
                     
-                    with st.spinner("🤖 Güvenlik duvarları aşılıyor ve altyazılar otomatik çekiliyor..."):
-                        # 1. DENEME: Doğrudan Çekme
-                        try:
-                            konusma_verisi = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
-                            metin_to_process = " ".join([parca['text'] for parca in konusma_verisi])
-                        except:
-                            # 2. DENEME: Proxy ile Arkadan Dolaşma
-                            ücretsiz_proxiler = [
-                                "http://45.77.53.111:3128",
-                                "http://185.195.20.12:80",
-                                "http://51.79.50.30:8080"
-                            ]
-                            for proxy in ücretsiz_proxiler:
+                    with st.spinner("🤖 Güvenlik duvarları aşılıyor ve altyazılar güvenli çerezle çekiliyor..."):
+                        if not os.path.exists(CEREZ_YOLU):
+                            st.error(f"⚠️ Kritik Hata: Klasörde '{CEREZ_YOLU}' dosyası bulunamadı! Lütfen dosyayı indirdiğinizden ve ana klasöre eklediğinizden emin olun.")
+                        else:
+                            try:
+                                # 1. ADIM: Çerez kullanarak videonun altyazı listesini çek
+                                altyazi_listesi = YouTubeTranscriptApi.list_transcripts(video_id, cookies=CEREZ_YOLU)
+                                
+                                # 2. ADIM: Türkçe veya İngilizce altyazıyı önceliklendir (manuel veya otomatik fark etmez)
                                 try:
-                                    os.environ["http_proxy"] = proxy
-                                    os.environ["https_proxy"] = proxy
-                                    konusma_verisi = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
-                                    metin_to_process = " ".join([parca['text'] for parca in konusma_verisi])
-                                    if metin_to_process:
-                                        break
+                                    altyazi = altyazi_listesi.find_transcript(['tr', 'en'])
                                 except:
-                                    continue
-                            
-                            # Proxy işlemlerinden sonra çevre değişkenlerini temizle
-                            if "http_proxy" in os.environ: del os.environ["http_proxy"]
-                            if "https_proxy" in os.environ: del os.environ["https_proxy"]
+                                    # Eğer doğrudan bulunamazsa mevcut ilk altyazıyı Türkçe'ye otomatik çevir
+                                    altyazi = altyazi_listesi.find_transcript([]).translate('tr')
+                                
+                                # 3. ADIM: Veriyi çek ve metne dönüştür
+                                konusma_verisi = altyazi.fetch()
+                                metin_to_process = " ".join([parca['text'] for parca in konusma_verisi])
+                            except Exception as e:
+                                st.error(f"Altyazı API Hatası: {str(e)}")
 
                     # İşleme adımı ve ekrana yazdırma
                     if metin_to_process:
@@ -227,3 +222,5 @@ else:
             else:
                 simdi = datetime.now()
                 tarih = simdi.strftime("%d.%m.%Y")
+                saat = simdi.strftime("%H:%M:%S")
+                
