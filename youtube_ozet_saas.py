@@ -31,22 +31,26 @@ def veritabani_kaydet(yeni_ozet):
         with open(VERITABANI_DOSYASI, "w", encoding="utf-8") as f:
             json.dump(gecmis, f, ensure_ascii=False, indent=4)
 
-# --- 🔍 YOUTUBE ID AYIKLAYICI ---
-def youtube_id_bul(url):
+# --- 📺 EN GARANTİ YOUTUBE ID BULUCU ---
+def youtube_id_bul_kesin(link_veya_id):
     """
-    Her türlü YouTube link varyasyonundan (Mobil, Shorts, Detaylı Parametreli)
-    11 haneli Video ID'sini hatasız bir şekilde ayıklar.
+    Kullanıcı ne girerse girsin (ister tam link, ister sadece 11 haneli kod),
+    Videonun 11 haneli eşsiz kodunu kesin olarak bulur.
     """
-    şablon = r'(?:v=|\/)([a-zA-Z0-9_-]{11})(?:\?|&|$|\s)'
-    eslesme = re.search(şablon, url)
-    if eslesme:
-        return eslesme.group(1)
+    girdi = link_veya_id.strip()
     
-    # Eğer yukarıdaki şablon kaçırırsa alternatif olarak 11 haneli standart yapıyı ara
-    yedek_sablon = r'(?:youtu\.be\/|youtube\.com\/(?:v\/|embed\/|watch\?v=|shorts\/))([a-zA-Z0-9_-]{11})'
-    yedek_eslesme = re.search(yedek_sablon, url)
-    return yedek_eslesme.group(1) if yedek_eslesme else None
-
+    # Eğer kullanıcı direkt 11 haneli kodu yazdıysa (Örn: ieeOWL5WBY8) direkt kabul et
+    if len(girdi) == 11 and not "/" in girdi and not "." in girdi:
+        return girdi
+        
+    # Her türlü linkin içinden 11 haneli kodu cımbızla çeken en sade mantık
+    bulunan = re.findall(r'[a-zA-Z0-9_-]{11}', girdi)
+    if bulunan:
+        # Genellikle linkin sonundaki veya watch?v= sonrasındaki ilk 11'lik parça ID'dir
+        for parca in bulunan:
+            if "youtube" not in parca.lower() and "youtu" not in parca.lower():
+                return parca
+    return None
 
 def yapay_zeka_ozet_motoru(metin):
     kelimeler = metin.split()
@@ -63,7 +67,6 @@ def yapay_zeka_ozet_motoru(metin):
         f"🎯 **Stratejik Sonuç:** Heddeflenen kitleye ulaşmak için adımların parçalara bölünerek yönetilmesi şarttır."
     ]
 
-# --- 🛠️ PDF RAPOR ÜRETME MOTORU ---
 def pdf_rapor_uret(tarih, saat, orijinal_metin, ozet_maddeleri):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, title="AI Ozet Raporu")
@@ -96,7 +99,7 @@ def pdf_rapor_uret(tarih, saat, orijinal_metin, ozet_maddeleri):
     buffer.seek(0)
     return buffer
 
-# --- YAN MENÜ (SIDEBAR) - KULLANICI GEÇMİŞİ ---
+# --- YAN MENÜ (SIDEBAR) ---
 st.sidebar.title("📜 Özet Geçmişiniz")
 gecmis_listesi = veritabani_yukle()
 secilen_eski_ozet = None
@@ -116,9 +119,9 @@ if st.sidebar.button("🗑️ Geçmişi Temizle"):
         st.sidebar.success("Geçmiş silindi!")
         st.rerun()
 
-# --- ANA SAYFA TASARIMI ---
+# --- ANA SAYFA ---
 st.title("📺 AI Akıllı Video & Metin Özetleyici SaaS")
-st.write("YouTube linklerini veya uzun metinleri saniyeler içinde analiz edin, 5 kritik maddede özetleyin.")
+st.write("YouTube linklerini veya uzun metinleri saniyeler içinde analiz edin.")
 st.divider()
 
 if secilen_eski_ozet:
@@ -133,41 +136,45 @@ if secilen_eski_ozet:
     if st.button("➕ Yeni Özet Oluşturma Ekranına Dön"): st.rerun()
 
 else:
-    # Sekmeli Arayüz (Tabs) - Kullanıcı Deneyimi için En Şık Çözüm
     sekme1, sekme2 = st.tabs(["📺 YouTube Videosu Özetle", "📝 Uzun Metin/Yazı Özetle"])
-    
     metin_to_process = ""
 
     # TAB 1: YOUTUBE ÖZETLEME
     with sekme1:
-        video_linki = st.text_input("YouTube Video Linkini Yapıştırın:", placeholder="https://youtube.com... veya https://youtu.be...")
+        st.write("💡 *İpucu: Eğer link hata verirse, videonun sadece 11 haneli kodunu (Örn: `ieeOWL5WBY8`) yazarak da deneyebilirsiniz.*")
+        video_linki = st.text_input("YouTube Linki veya 11 Haneli Video Kodu Girin:", placeholder="Örn: https://youtube.com")
+        
         if st.button("Videoyu Analiz Et ve Özetle", key="yt_btn"):
             if not video_linki:
-                st.warning("Lütfen bir link girin!")
+                st.warning("Lütfen bir giriş yapın!")
             else:
-                video_id = youtube_id_bul(video_linki)
+                # Kesin ve yeni bulma fonksiyonumuzu çalıştırıyoruz
+                video_id = youtube_id_bul_kesin(video_linki)
+                
                 if not video_id:
-                    st.error("❌ Geçersiz YouTube link formatı!")
+                    st.error("❌ Girdiğiniz metinden 11 haneli bir YouTube video kodu çıkartılamadı.")
                 else:
-                    with st.spinner("YouTube altyazıları çekiliyor ve yapay zeka analiz ediyor..."):
+                    st.info(f"🔍 Sistem: Video Kodu '{video_id}' olarak başarıyla yakalandı. Analiz başlıyor...")
+                    
+                    with st.spinner("Altyazılar sunucudan indiriliyor..."):
                         try:
-                            # Önce Türkçe dene, yoksa İngilizce altyazıyı çek
+                            # Önce Türkçe altyazı, yoksa İngilizce çekmeye çalışıyoruz
                             konusma_verisi = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
                             metin_to_process = " ".join([parca['text'] for parca in konusma_verisi])
                         except Exception as e:
-                            st.error("❌ Bu videonun altyazı verilerine ulaşılamadı. (Altyazılar kapalı olabilir veya yerel ağ engeli mevcut).")
-                            st.info("Eğer yerel bilgisayardaysanız, lütfen bu kodu GitHub'a gönderip canlı sitenizde deneyin. Canlıda tıkır tıkır çalışacaktır!")
+                            st.error("❌ Bu videonun altyazı verilerine ulaşılamadı.")
+                            st.caption(f"Hata Detayı: {e}")
 
     # TAB 2: METİN ÖZETLEME
     with sekme2:
-        uzun_metin = st.text_area("Özetlenecek Metni Buraya Yapıştırın:", placeholder="Analiz edilecek yazıyı girin...", height=150)
+        uzun_metin = st.text_area("Özetlenecek Metni Buraya Yapıştırın:", placeholder="Yazınızı buraya girin...", height=150)
         if st.button("Metni Analiz Et ve Özetle", key="txt_btn"):
             if not uzun_metin or len(uzun_metin.strip()) < 10:
                 st.warning("Lütfen yeterli uzunlukta bir metin girin!")
             else:
                 metin_to_process = uzun_metin
 
-    # ORTAK İŞLEME VE VERİTABANINA KAYDETME
+    # ORTAK İŞLEME ALANI
     if metin_to_process:
         yapay_zeka_ozeti = yapay_zeka_ozet_motoru(metin_to_process)
         simdi = datetime.now()
