@@ -52,13 +52,15 @@ def youtube_id_bul_kesin(link_veya_id):
 # --- 🔥 GERÇEK YAPAY ZEKA ÖZET MOTORU ---
 def gemini_ile_ozetle(girdi_metni, api_key_input):
     try:
-        # Hangi anahtar aktifse onu sisteme tanıt ve kararlı v1 sürümünü zorla
         aktif_key = api_key_input if api_key_input else GEMINI_API_KEY
         if not aktif_key:
             return ["❌ Hata: Sistemde aktif bir Gemini API anahtarı bulunamadı. Lütfen sol taraftaki kutuya anahtarınızı girin."]
             
-        genai.configure(api_key=aktif_key, client_options={"api_version": "v1"})
-        model = genai.GenerativeModel("gemini-1.5-flash-latest")
+        # Hatalı olan client_options kısmını tamamen kaldırıp en sade şekilde configure ediyoruz
+        genai.configure(api_key=aktif_key)
+        
+        # En kararlı ve güncel ana üretim modelini çağırıyoruz
+        model = genai.GenerativeModel("gemini-1.5-flash")
         
         talimat = (
             "Sana verilen metni veya konuşma dökümünü incele. "
@@ -72,9 +74,8 @@ def gemini_ile_ozetle(girdi_metni, api_key_input):
     except Exception as e:
         return [
             f"❌ Yapay Zeka Bağlantı Hatası: {e}",
-            "⚠️ Not: Eğer 403 veya yetki hatası alıyorsanız, kopyaladığınız API anahtarının başında veya sonunda boşluk kalmadığından emin olun."
+            "⚠️ Not: Eğer yetki hatası alıyorsanız, kopyaladığınız API anahtarının başında veya sonunda boşluk kalmadığından emin olun."
         ]
-
 def pdf_rapor_uret(tarih, saat, orijinal_metin, ozet_maddeleri):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, title="AI Ozet Raporu")
