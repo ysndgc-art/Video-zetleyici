@@ -14,7 +14,7 @@ import io
 # Web Sayfası Tasarımı
 st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
 
-# --- VERİTABANI (JSON) FONKSİYONLARI ---
+# --- VERİBATANI (JSON) FONKSİYONLARI ---
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
 
 def veritabani_yukle():
@@ -42,15 +42,12 @@ def youtube_id_bul_kesin(link_veya_id):
                 return parca
     return None
 
-# --- 🧠 %100 ÜCRETSİZ VE BAĞIMSIZ AKILLI ÖZET MOTORU ---
+# --- 🧠 AKILLI ÖZET MOTORU ---
 def akilli_yerel_ozetleyici(metin):
-    """Metni cümlelere bölüp kelime frekans analiziyle en önemli 5 cümleyi seçer."""
-    # Metni temizle ve cümlelere böl
     cumleler = re.split(r'(?<=[.!?])\s+', metin.strip())
     if len(cumleler) <= 5:
         return [f"📌 {c}" for c in cumleler if c.strip()]
     
-    # Kelime frekanslarını (sıklıklarını) hesapla
     kelimeler = re.findall(r'\w+', metin.lower())
     durma_kelimeleri = {"ve", "veya", "ama", "fakat", "ile", "bir", "bu", "şu", "o", "da", "de", "için", "gibi", "çok", "en", "daha", "olan", "olarak"}
     frekanslar = {}
@@ -58,7 +55,6 @@ def akilli_yerel_ozetleyici(metin):
         if k not in durma_kelimeleri and len(k) > 2:
             frekanslar[k] = frekanslar.get(k, 0) + 1
             
-    # Cümleleri puanla
     cumle_puanlari = {}
     for idx, cumle in enumerate(cumleler):
         puan = 0
@@ -67,7 +63,6 @@ def akilli_yerel_ozetleyici(metin):
                 puan += frekanslar[kelime]
         cumle_puanlari[idx] = puan
         
-    # En yüksek puanlı ilk 5 cümleyi orijinal sırasına göre seç
     en_iyiler = sorted(cumle_puanlari, key=cumle_puanlari.get, reverse=True)[:5]
     en_iyiler.sort()
     
@@ -75,7 +70,6 @@ def akilli_yerel_ozetleyici(metin):
     sonuc_maddeleri = []
     for i, idx in enumerate(en_iyiler):
         temiz_cumle = cumleler[idx].strip()
-        # Çok uzun cümleleri kırp
         if len(temiz_cumle) > 150:
             temiz_cumle = temiz_cumle[:147] + "..."
         sonuc_maddeleri.append(f"{emojiler[i]} {temiz_cumle}")
@@ -88,7 +82,7 @@ def pdf_rapor_uret(tarih, saat, orijinal_metin, ozet_maddeleri):
     hikaye = []
     stiller = getSampleStyleSheet()
     
-    baslik_stili = ParagraphStyle('RB', parent=stiller['Heading1'], fontSize=24, textColor=colors.HexColor('#1E3A8A'), spaceAfter=12)
+    baslik_stili = ParagraphStyle('RB', parent=stiller['Heading1'], fontSize=22, textColor=colors.HexColor('#1E3A8A'), spaceAfter=12)
     alt_baslik_stili = ParagraphStyle('RAB', parent=stiller['Normal'], fontSize=10, textColor=colors.gray, spaceAfter=20)
     madde_stili = ParagraphStyle('RM', parent=stiller['Normal'], fontSize=12, spaceAfter=10, leading=16)
 
@@ -107,9 +101,10 @@ def pdf_rapor_uret(tarih, saat, orijinal_metin, ozet_maddeleri):
     hikaye.append(Paragraph(orijinal_metin[:500] + "...", stiller['Normal']))
     
     hikaye.append(Spacer(1, 30))
-    hikaye.append(Paragraph("<font size=8 color=gray>Bu rapor bilgilendirme amaçlı üretilmiştir. Yazılım metin madenciliği algoritması kullanılmıştır.</font>", stiller['Normal']))
+    hikaye.append(Paragraph("<font size=8 color=gray>Bu rapor bilgilendirme amaçlı üretilmiştir. AI yanıtları hata içerebilir.</font>", stiller['Normal']))
     
-    doc.build(buffer)
+    # HATA BURADAYDI: doc.build içerisine oluşturduğumuz hikaye listesini ekledik!
+    doc.build(hikaye)
     buffer.seek(0)
     return buffer
 
