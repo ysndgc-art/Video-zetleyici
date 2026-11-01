@@ -16,12 +16,12 @@ import google.generativeai as genai
 st.set_page_config(page_title="AI Video & Metin Özetleyici SaaS", page_icon="📺", layout="wide")
 
 # --- 🧠 GÜVENLİ API ANAHTARI BAĞLANTISI ---
-# Kodun içine açık anahtar yazmıyoruz! Streamlit Kasasından (Secrets) çekiyoruz.
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=GEMINI_API_KEY)
+    # v1beta yerine en kararlı ve güncel üretim sürümü olan v1 API'sini zorluyoruz
+    genai.configure(api_key=GEMINI_API_KEY, client_options={"api_version": "v1"})
 except Exception as e:
-    st.error("🔑 API Anahtarı bulunamadı! Lütfen Streamlit Cloud panelinden 'Advanced Settings -> Secrets' kısmına GEMINI_API_KEY ekleyin.")
+    st.error("🔑 API Anahtarı bulunamadı!")
 
 # --- VERİTABANI (JSON) FONKSİYONLARI ---
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
@@ -54,8 +54,8 @@ def youtube_id_bul_kesin(link_veya_id):
 # --- 🔥 GERÇEK YAPAY ZEKA ÖZET MOTORU ---
 def gemini_ile_ozetle(girdi_metni):
     try:
-        # En kararlı ve evrensel model olan gemini-pro sürümünü kullanıyoruz
-        model = genai.GenerativeModel("gemini-pro")
+        # En güncel ve sorunsuz çalışan kararlı üretim modelini çağırıyoruz
+        model = genai.GenerativeModel("gemini-1.5-flash-latest")
         
         talimat = (
             "Sana verilen metni veya konuşma dökümünü incele. "
