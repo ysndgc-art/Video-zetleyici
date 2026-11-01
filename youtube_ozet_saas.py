@@ -242,4 +242,3 @@ if mod == "📝 Uzun Metin":
         if not girilen_metin.strip():
             st.warning("Lütfen metin girin.")
         else:
-            # Girinti hatası riskini sıfırlamak için düz sıralı mantık
