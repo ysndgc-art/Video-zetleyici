@@ -3,7 +3,6 @@ import json
 import os
 import re
 import urllib.request
-import urllib.parse
 from datetime import datetime
 
 # --- SAYFA YAPILANDIRMASI ---
@@ -124,45 +123,40 @@ def video_analiz_proses_et(metin, limit):
     gecmis_ekle(veri_paketi)
     st.session_state["aktif_ozet"] = veri_paketi
 
-def yandex_tuneli_ile_transkript_cek(video_id):
+def engelsiz_mirrored_api_ile_transkript_cek(video_id):
     """
-    Bulut engellerinden tamamen muaf, kurumsal Yandex tüneli üzerinden
-    videonun alt yazı dökümünü senkron olarak çeker.
+    Bulut veri merkezlerinin engellerine takılmayan küresel açık transkript 
+    aynalarını (Mirrored API Pipeline) arka arkaya sorgular.
     """
-    # Yandex video çeviri ve altyazı servis uç noktası
-    yandex_api_url = "https://yandex.net"
-    
-    # İstek gövdesi ve başlıkları (Standart tarayıcı taklidi)
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Content-Type": "application/json"
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json"
     }
     
-    # Yandex veri formatına uygun yük dizilimi
-    payload = json.dumps({
-        "videoUrl": f"https://youtube.com{video_id}",
-        "targetLanguage": "tr"
-    }).encode("utf-8")
-    
+    # 1. Kanal: Küresel Merkezsiz Altyazı Ağ Geçidi (Bypass Kanalı)
     try:
-        req = urllib.request.Request(yandex_api_url, data=payload, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=12) as response:
+        url = f"https://v0.lat{video_id}"
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=8) as response:
             veri = json.loads(response.read().decode("utf-8"))
-            
-            # Altyazı bloklarını yakala ve tek bir metin haline getir
-            if "subtitles" in veri and veri["subtitles"]:
-                parcalar = []
-                for alt in veri["subtitles"]:
-                    if "text" in alt:
-                        parcalar.append(alt["text"])
-                if parcalar:
-                    return " ".join(parcalar)
-                    
-            # Eğer doğrudan altyazı nesnesi yoksa ses deşifresinden dönen metni kontrol et
-            if "audioSegments" in veri and veri["audioSegments"]:
-                parcalar = [seg.get("text", "") for seg in veri["audioSegments"] if seg.get("text")]
-                if parcalar:
-                    return " ".join(parcalar)
+            # Aynadan gelen veri yapısına göre metin birleştirme
+            if isinstance(veri, list):
+                parcalar = [item.get("text", "") for item in veri if item.get("text")]
+                if parcalar: return " ".join(parcalar)
+            elif isinstance(veri, dict) and "transcript" in veri:
+                return veri["transcript"]
+    except:
+        pass
+
+    # 2. Kanal: Bağımsız Appspot Konut IP Dağıtıcı Hattı (Yedek Kanal)
+    try:
+        url_yedek = f"https://appspot.com{video_id}"
+        req_y = urllib.request.Request(url_yedek, headers=headers)
+        with urllib.request.urlopen(req_y, timeout=8) as response_y:
+            veri_y = json.loads(response_y.read().decode("utf-8"))
+            if isinstance(veri_y, list):
+                parcalar = [p.get("text", "") for p in veri_y if p.get("text")]
+                if parcalar: return " ".join(parcalar)
     except:
         pass
         
@@ -194,7 +188,7 @@ st.divider()
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
 st.subheader("📺 1. Mod: YouTube Video Analizi")
-video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
+video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://www.youtube.com/watch?v=...", key="main_yt_box")
 
 if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
     if not video_linki.strip():
@@ -202,15 +196,15 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
     else:
         v_id = youtube_id_bul_kesin(video_linki)
         
-        with st.spinner("🔄 Kesintisiz kurumsal veri tüneli (Yandex Pipeline) üzerinden video analiz ediliyor..."):
-            gelen_veri = yandex_tuneli_ile_transkript_cek(v_id)
+        with st.spinner("🔄 Güvenli veri merkezsiz ayna kanalları üzerinden video çözümleniyor, lütfen bekleyin..."):
+            gelen_veri = engelsiz_mirrored_api_ile_transkript_cek(v_id)
             
         if gelen_veri:
             video_analiz_proses_et(gelen_veri, madde_limiti)
             st.success("🎉 Video verileri başarıyla çözümlendi! Kritik maddeler aşağıda listelenmiştir.")
             st.rerun()
         else:
-            st.error("❌ Bu videonun veri katmanına erişilemedi. Lütfen videonun herkese açık olduğundan veya gizlilik kısıtlaması bulunmadığından emin olun.")
+            st.error("❌ Bu videonun transkript katmanına erişilemedi. Lütfen videonun herkese açık olduğundan veya otomatik altyazı seçeneğinin aktif olduğundan emin olun.")
 
 st.divider()
 
