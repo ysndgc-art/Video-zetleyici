@@ -3,3 +3,4 @@ streamlit
 reportlab
 deep-translator
 youtube-transcript-api
+openai
