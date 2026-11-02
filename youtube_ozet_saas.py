@@ -4,7 +4,6 @@ import os
 import re
 import urllib.request
 from datetime import datetime
-import streamlit.components.v1 as components
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -85,6 +84,7 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
             continue
         for kelime in kelime_listesi:
             if kelime in frekanslar:
+                puan += frevivanslar[kelime] if kelime in frekanslar else puan
                 puan += frekanslar[kelime]
         cumle_puanlari[idx] = puan
 
@@ -126,6 +126,40 @@ def video_analiz_proses_et(metin, limit):
     st.session_state["aktif_ozet"] = veri_paketi
     st.rerun()
 
+def cdn_hattindan_altyazi_cek(video_id):
+    """
+    Bulut engellerine takılmayan, bağımsız ve açık dünya transkript 
+    tünellerini senkron olarak Python kanalıyla sorgular.
+    """
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    
+    # 1. Güvenli Hat: Açık Altyazı API Köprüsü
+    try:
+        api_url = f"https://bhawanigarg.com{video_id}"
+        req = urllib.request.Request(api_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=7) as response:
+            veri = json.loads(response.read().decode("utf-8"))
+            if veri.get("success") and veri.get("transcript"):
+                return veri.get("transcript")
+    except:
+        pass
+
+    # 2. Güvenli Hat: Yedek Küresel Transkript Havuzu
+    try:
+        yedek_url = f"https://youtubetranscript.com{video_id}"
+        req_y = urllib.request.Request(yedek_url, headers=headers)
+        with urllib.request.urlopen(req_y, timeout=7) as res_y:
+            xml_raw = res_y.read().decode("utf-8")
+            if xml_raw.strip() and "<text" in xml_raw:
+                import xml.etree.ElementTree as ET
+                root = ET.fromstring(xml_raw)
+                parcalar = [t.text for t in root.findall(".//text") if t.text]
+                if parcalar:
+                    return " ".join(parcalar)
+    except:
+        pass
+    return None
+
 def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
     txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {tarih} - {saat}\n"
     if baslik_url: txt_cikisi += f"Kaynak: {baslik_url}\n"
@@ -162,67 +196,15 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
         st.warning("Lütfen bir YouTube linki girin.")
     else:
         v_id = youtube_id_bul_kesin(video_linki)
-        st.info("🔄 Güvenli veri kanalları üzerinden video dökümü analiz ediliyor...")
+        st.info("doc 🔄 Güvenli veri kanalları üzerinden video dökümü analiz ediliyor...")
         
-        # Format string çakışmasını engellemek için % yapısı ile kurulmuş temiz JS Köprüsü
-        js_bridge = """
-        <script>
-        async function altyaziCek() {
-            try {
-                const res = await fetch('https://google.com');
-                const text = await res.text();
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(text, "text/xml");
-                const lines = xmlDoc.getElementsByTagName("text");
-                let tamMetin = "";
-                for (let i = 0; i < lines.length; i++) {
-                    tamMetin += lines[i].textContent + " ";
-                }
-                window.parent.postMessage({type: 'streamlit:setComponentValue', value: tamMetin}, '*');
-            } catch(e) {
-                window.parent.postMessage({type: 'streamlit:setComponentValue', value: 'HATA'}, '*');
-            }
-        }
-        altyaziCek();
-        </script>
-        """ % v_id
-        components.html(js_bridge, height=0, width=0)
+        # Senkron CDN motorunu tetikle
+        video_metni = cdn_hattindan_altyazi_cek(v_id)
         
-        # Tarayıcı engelini yedekleyen alternatif bağımsız CDN veri tüneli
-        yedek_api = f"https://vexdh.com{v_id}"
-        try:
-            # Doğrudan resmi Google timedtext API tünelini Python ile zorla
-            url_direkt = f"https://google.com{v_id}&lang=tr"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            req = urllib.request.Request(url_direkt, headers=headers)
-            with urllib.request.urlopen(req, timeout=5) as response:
-                xml_raw = response.read().decode("utf-8")
-                
-            if xml_raw.strip() and "<text" in xml_raw:
-                import xml.etree.ElementTree as ET
-                root = ET.fromstring(xml_raw)
-                parcalar = [t.text for t in root.findall(".//text") if t.text]
-                video_analiz_proses_et(" ".join(parcalar), madde_limiti)
-            else:
-                # İngilizce transkript dene
-                req_en = urllib.request.Request(f"https://google.com{v_id}&lang=en", headers=headers)
-                with urllib.request.urlopen(req_en, timeout=5) as response_en:
-                    xml_raw_en = response_en.read().decode("utf-8")
-                if xml_raw_en.strip() and "<text" in xml_raw_en:
-                    import xml.etree.ElementTree as ET
-                    root_en = ET.fromstring(xml_raw_en)
-                    parcalar_en = [t.text for t in root_en.findall(".//text") if t.text]
-                    video_analiz_proses_et(" ".join(parcalar_en), madde_limiti)
-                else:
-                    # API köprüsüyle veriyi canlandır
-                    req_cdn = urllib.request.Request(f"https://b-cdn.net{v_id}", headers=headers)
-                    with urllib.request.urlopen(req_cdn, timeout=5) as res_cdn:
-                        veri_cdn = json.loads(res_cdn.read().decode("utf-8"))
-                        metin_cdn = veri_cdn.get("data", {}).get("title", "") or "Simüle Video Metni Analizi Başlatılıyor"
-                    video_analiz_proses_et(metin_cdn * 10, madde_limiti)
-        except:
-            # Nihai koruma katmanı
-            video_analiz_proses_et("Bu video içeriği akıllı dil algoritması tarafından başarıyla işlendi ve anahtar kelime haritası çıkarıldı.", madde_limiti)
+        if video_metni:
+            video_analiz_proses_et(video_metni, madde_limiti)
+        else:
+            st.error("❌ Bu videonun altyazı/transkript verilerine doğrudan erişilemedi. Lütfen videonun herkese açık ve altyazılara sahip olduğundan emin olun.")
 
 st.divider()
 
@@ -232,3 +214,22 @@ if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
     if not girilen_metin.strip():
         st.warning("Lütfen metin girin.")
     else:
+        ham_maddeler = yerel_mantik_ozetleyici(girilen_metin)
+        ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler[:madde_limiti]]
+        simdi = datetime.now()
+        veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": girilen_metin, "ozet": ozet_maddeleri}
+        gecmis_ekle(veri_paketi)
+        st.session_state["aktif_ozet"] = veri_paketi
+        st.rerun()
+
+# --- SONUÇ ALANI ---
+if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not None:
+    st.divider()
+    st.info("📂 **Analiz Sonucu**")
+    g = st.session_state["aktif_ozet"]
+    if isinstance(g, dict) and "ozet" in g:
+        for m in g.get('ozet', []):
+            st.write(m)
+        st.divider()
+        t_fmt = rapor_formatlarini_uret(g.get('tarih',''), g.get('saat',''), g.get('ozet', []))
+        st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
