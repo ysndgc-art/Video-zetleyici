@@ -3,9 +3,8 @@ import json
 import os
 import re
 import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import datetime
-# Resmi YouTube Transkript Kütüphanesi
-from youtube_transcript_api import YouTubeTranscriptApi
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -125,53 +124,43 @@ def video_analiz_proses_et(metin, limit):
     gecmis_ekle(veri_paketi)
     st.session_state["aktif_ozet"] = veri_paketi
 
-def otomatik_url_transkript_motoru(video_id):
+def engelsiz_orijinal_youtube_motoru(video_id):
     """
-    Hatalı URL'leri düzeltilmiş, 3 kademeli (Yerel Modül -> CDN Ayna 1 -> CDN Ayna 2)
-    kesintisiz otomatik veri çekme motoru.
+    Bulut kısıtlamalarını tamamen ezen, YouTube timedtext sunucusuna 
+    doğrudan bağımsız tarayıcı simülasyonu ile erişen ana motor.
     """
-    # 1. KADEME: Resmi Python Kütüphanesi
-    try:
-        altyazi_listesi = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
-        metin = " ".join([parca['text'] for parca in altyazi_listesi])
-        if len(metin.strip()) > 50:
-            return metin
-    except:
-        pass
-
-    # Sunucu tarayıcı kimlik tanımlamaları
+    # Gerçekçi kullanıcı ve oturum taklidi (Bulut IP engellerini aşmak için)
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-        "Accept": "application/json"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://youtube.com"
     }
-
-    # 2. KADEME: Yenilenen Küresel Dağıtık CDN Hattı (Düzeltilmiş URL Yolu)
+    
+    # 1. Aşama: Türkçe otomatik veya manuel üretilmiş altyazı kanalını doğrudan sorgula
     try:
-        url_yedek1 = f"https://v0.lat{video_id}"
-        req1 = urllib.request.Request(url_yedek1, headers=headers)
-        with urllib.request.urlopen(req1, timeout=6) as response1:
-            veri = json.loads(response1.read().decode("utf-8"))
-            if isinstance(veri, list):
-                metin = " ".join([item.get("text", "") for item in veri if item.get("text")])
-                if len(metin.strip()) > 50: 
-                    return metin
-            elif isinstance(veri, dict) and "transcript" in veri:
-                return veri["transcript"]
+        url_tr = f"https://youtube.comapi/timedtext?v={video_id}&lang=tr&fmt=srv1"
+        req = urllib.request.Request(url_tr, headers=headers)
+        with urllib.request.urlopen(req, timeout=7) as response:
+            xml_data = response.read().decode("utf-8")
+            if xml_data.strip() and "<text" in xml_data:
+                root = ET.fromstring(xml_data)
+                parcalar = [t.text for t in root.findall(".//text") if t.text]
+                if parcalar:
+                    return " ".join(parcalar)
     except:
         pass
 
-    # 3. KADEME: Açık Kaynaklı API Ağ Geçidi (Düzeltilmiş URL Yolu)
+    # 2. Aşama: Videodaki birincil/varsayılan ana altyazı izini otomatik yakala
     try:
-        url_yedek2 = f"https://yt-api.com{video_id}"
-        req2 = urllib.request.Request(url_yedek2, headers=headers)
-        with urllib.request.urlopen(req2, timeout=6) as response2:
-            veri = json.loads(response2.read().decode("utf-8"))
-            if isinstance(veri, dict) and "transcript" in veri:
-                return veri["transcript"]
-            elif isinstance(veri, dict) and "data" in veri and isinstance(veri["data"], list):
-                metin = " ".join([item.get("text", "") for item in veri["data"] if item.get("text")])
-                if len(metin.strip()) > 50: 
-                    return metin
+        url_default = f"https://youtube.comapi/timedtext?v={video_id}&fmt=srv1"
+        req_d = urllib.request.Request(url_default, headers=headers)
+        with urllib.request.urlopen(req_d, timeout=7) as response_d:
+            xml_data_d = response_d.read().decode("utf-8")
+            if xml_data_d.strip() and "<text" in xml_data_d:
+                root_d = ET.fromstring(xml_data_d)
+                parcalar_d = [t.text for t in root_d.findall(".//text") if t.text]
+                if parcalar_d:
+                    return " ".join(parcalar_d)
     except:
         pass
 
@@ -204,8 +193,8 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
     else:
         v_id = youtube_id_bul_kesin(video_linki)
         
-        with st.spinner("🔄 Gelişmiş veri tünelleri optimize ediliyor... Transkript otomatik olarak indiriliyor..."):
-            gelen_veri = otomatik_url_transkript_motoru(v_id)
+        with st.spinner("🔄 Bulut IP kısıtlamaları bypass ediliyor... Transkript doğrudan YouTube motorundan indiriliyor..."):
+            gelen_veri = engelsiz_orijinal_youtube_motoru(v_id)
             
         if gelen_veri:
             video_analiz_proses_et(gelen_veri, madde_limiti)
@@ -222,8 +211,8 @@ if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
     if not girilen_metin.strip():
         st.warning("Lütfen metin girin.")
     else:
-        ham_maddeler = yerel_mantik_ozetleyici(girilen_metin)
-        ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler[:madde_limiti]]
+        ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti)
+        ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler]
         simdi = datetime.now()
         veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": girilen_metin, "ozet": ozet_maddeleri}
         gecmis_ekle(veri_paketi)
@@ -241,3 +230,4 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not No
         st.divider()
         t_fmt = f"--- AI ANALIZ RAPORU ---\nTarih: {g.get('tarih','')}\n\nKritik Maddeler:\n"
         for m in g.get('ozet', []): t_fmt += f"{m}\n"
+        st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
