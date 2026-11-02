@@ -175,7 +175,7 @@ def whisper_ile_ses_coz(video_id, api_anahtari):
             except: pass
             if transcription.text:
                 return transcription.text, "tr"
-    except Exception as e:
+    except:
         try:
             if os.path.exists(f"{gecici_ses_dosyasi}.m4a"):
                 os.remove(f"{gecici_ses_dosyasi}.m4a")
@@ -196,9 +196,8 @@ def akilli_altyazi_indirici(video_id, cerez_yolu, api_anahtari):
         if metin.strip(): return metin, transcript.language_code
     except: pass
     
-    # Sunucu IP engeli varsa veya altyazı bulunamadıysa Whisper API devreye girer
     if api_anahtari:
-        st.write("🔄 Klasik altyazı yöntemleri engellendi. OpenAI Whisper API ile ses çözülüyor...")
+        st.write("🔄 Klasik yöntemler engellendi. OpenAI Whisper API ile ses çözülüyor...")
         metin, dil = whisper_ile_ses_coz(safe_id, api_anahtari)
         if metin and metin.strip():
             return metin, dil
@@ -235,7 +234,7 @@ st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
-# Tam Güvenlikli Sekme Sistemi
+# Sekme Sistemi
 sekme1, sekme2 = st.tabs(["📺 YouTube Videosu", "📝 Uzun Metin"])
 
 with sekme1:
@@ -252,3 +251,5 @@ with sekme1:
             if not metin:
                 st.error("YouTube engelleri aşılamadı. Lütfen geçerli bir OpenAI API anahtarı girdiğinizden emin olun.")
             else:
+                st.write("🤖 Yapay zeka maddeleri çıkarıyor...")
+                ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil=altyazi_dili)
