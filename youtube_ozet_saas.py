@@ -181,7 +181,7 @@ def whisper_ile_ses_coz(video_id, api_anahtari):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([f"https://youtube.com{video_id}"])
-    except Exception as e:
+    except:
         st.warning("⚠️ Sunucu tabanlı yt-dlp engellendi. İstemci taraflı API köprüsü deneniyor...")
         alternatif_ses_indirici_koprusu(video_id, indirilen_dosya)
         
@@ -192,11 +192,12 @@ def whisper_ile_ses_coz(video_id, api_anahtari):
     try:
         st.write("🚀 Ses dosyası başarıyla alındı. Whisper API ile yazıya dökülüyor...")
         client = OpenAI(api_key=api_anahtari)
-        with open(indirilen_dosya, "rb") as audio_file:
-            transcription = client.audio.transcriptions.create(
-                model="whisper-1", 
-                file=audio_file
-            )
+        audio_file = open(indirilen_dosya, "rb")
+        transcription = client.audio.transcriptions.create(
+            model="whisper-1", 
+            file=audio_file
+        )
+        audio_file.close()
         try: os.remove(indirilen_dosya)
         except: pass
         if transcription.text:
@@ -258,7 +259,6 @@ st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
-# Sekme Sistemi
-sekme1, sekme2 = st.tabs(["📺 YouTube Videosu", "📝 Uzun Metin"])
+# Sıfır Girinti İçin Optimize Edilmiş Doğrusal Sekme Sistemi
+secilen_sekme = st.radio("Lütfen Analiz Modunu Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
 
-with sekme1:
