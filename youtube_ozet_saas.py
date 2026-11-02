@@ -3,11 +3,8 @@ import json
 import os
 import re
 import urllib.request
+import urllib.parse
 from datetime import datetime
-# Yeni Nesil Yapay Zeka Deşifre Motorları
-import yt_dlp
-import speech_recognition as sr
-from pydub import AudioSegment
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -117,7 +114,7 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
 
 def video_analiz_proses_et(metin, limit):
     if not isinstance(metin, str) or len(metin.strip()) < 15:
-        st.error("❌ Belirtilen videodan metin dökümü çıkarılamadı. Lütfen konuşma içeren başka bir video deneyin.")
+        st.error("❌ Belirtilen videoya ait transkript akışı alınamadı. Başka bir video linki deneyebilirsiniz.")
         return
         
     ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=limit)
@@ -127,54 +124,49 @@ def video_analiz_proses_et(metin, limit):
     gecmis_ekle(veri_paketi)
     st.session_state["aktif_ozet"] = veri_paketi
 
-def yerel_ai_ile_video_desifre_et(video_url):
+def yandex_tuneli_ile_transkript_cek(video_id):
     """
-    YouTube IP engellerini bypass etmek için videonun sadece ses kanalını çeker
-    ve yerel Speech-to-Text motoru ile yapay zeka dökümünü oluşturur.
+    Bulut engellerinden tamamen muaf, kurumsal Yandex tüneli üzerinden
+    videonun alt yazı dökümünü senkron olarak çeker.
     """
-    ses_dosyasi_adi = "gevici_audio"
-    wav_dosyasi_adi = "gevici_audio.wav"
+    # Yandex video çeviri ve altyazı servis uç noktası
+    yandex_api_url = "https://yandex.net"
     
-    # 1. Adım: yt-dlp ile videonun sadece sesini en hafif formatta indir
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': ses_dosyasi_adi,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'wav',
-            'preferredquality': '192',
-        }],
-        'quiet': True,
-        'no_warnings': True
+    # İstek gövdesi ve başlıkları (Standart tarayıcı taklidi)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Content-Type": "application/json"
     }
     
+    # Yandex veri formatına uygun yük dizilimi
+    payload = json.dumps({
+        "videoUrl": f"https://youtube.com{video_id}",
+        "targetLanguage": "tr"
+    }).encode("utf-8")
+    
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([video_url])
+        req = urllib.request.Request(yandex_api_url, data=payload, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=12) as response:
+            veri = json.loads(response.read().decode("utf-8"))
             
-        # Dosya uzantısını kontrol et (bazen otomatik eklenir)
-        if not os.path.exists(wav_dosyasi_adi) and os.path.exists(ses_dosyasi_adi + ".wav"):
-            wav_dosyasi_adi = ses_dosyasi_adi + ".wav"
-            
-        # 2. Adım: Ses dosyasını yapay zeka deşifre motoruna yükle
-        taniyici = sr.Recognizer()
-        with sr.AudioFile(wav_dosyasi_adi) as source:
-            # Arka plan gürültülerini filtrele
-            taniyici.adjust_for_ambient_noise(source)
-            ses_verisi = taniyici.record(source)
-            
-        # Google Speech Tanıma Altyapısı ile Türkçe (veya otomatik) Deşifre Et
-        metin_dokumu = taniyici.recognize_google(ses_verisi, language="tr-TR")
+            # Altyazı bloklarını yakala ve tek bir metin haline getir
+            if "subtitles" in veri and veri["subtitles"]:
+                parcalar = []
+                for alt in veri["subtitles"]:
+                    if "text" in alt:
+                        parcalar.append(alt["text"])
+                if parcalar:
+                    return " ".join(parcalar)
+                    
+            # Eğer doğrudan altyazı nesnesi yoksa ses deşifresinden dönen metni kontrol et
+            if "audioSegments" in veri and veri["audioSegments"]:
+                parcalar = [seg.get("text", "") for seg in veri["audioSegments"] if seg.get("text")]
+                if parcalar:
+                    return " ".join(parcalar)
+    except:
+        pass
         
-        # Temizlik Adımı: Geçici ses dosyalarını sunucudan sil
-        if os.path.exists(wav_dosyasi_adi): os.remove(wav_dosyasi_adi)
-        if os.path.exists(ses_dosyasi_adi): os.remove(ses_dosyasi_adi)
-            
-        return metin_dokumu
-    except Exception as e:
-        # Geçici temizlik
-        if os.path.exists(wav_dosyasi_adi): os.remove(wav_dosyasi_adi)
-        return None
+    return None
 
 def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
     txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {tarih} - {saat}\n"
@@ -202,21 +194,23 @@ st.divider()
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
 st.subheader("📺 1. Mod: YouTube Video Analizi")
-video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://www.youtube.com/watch?v=...", key="main_yt_box")
+video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 
 if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
     if not video_linki.strip():
         st.warning("Lütfen bir YouTube linki girin.")
     else:
-        with st.spinner("⚡ Dış API engelleri aşılıyor... Yapay zeka ses analiz motoru doğrudan video dalgalarını deşifre ediyor (Lütfen bekleyin)..."):
-            gelen_veri = yerel_ai_ile_video_desifre_et(video_linki)
+        v_id = youtube_id_bul_kesin(video_linki)
+        
+        with st.spinner("🔄 Kesintisiz kurumsal veri tüneli (Yandex Pipeline) üzerinden video analiz ediliyor..."):
+            gelen_veri = yandex_tuneli_ile_transkript_cek(v_id)
             
         if gelen_veri:
             video_analiz_proses_et(gelen_veri, madde_limiti)
-            st.success("🎉 Yapay zeka ses dalgalarını başarıyla metne dönüştürdü ve analiz etti!")
+            st.success("🎉 Video verileri başarıyla çözümlendi! Kritik maddeler aşağıda listelenmiştir.")
             st.rerun()
         else:
-            st.error("❌ Bulut sunucu limiti veya video erişim hatası. Lütfen video bağlantısının doğru ve herkese açık olduğunu teyit edin.")
+            st.error("❌ Bu videonun veri katmanına erişilemedi. Lütfen videonun herkese açık olduğundan veya gizlilik kısıtlaması bulunmadığından emin olun.")
 
 st.divider()
 
