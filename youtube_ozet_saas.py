@@ -10,7 +10,6 @@ st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", 
 
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
 COOKIE_DOSYASI = "youtube_cookies.txt"
-TEMIZ_COOKIE_DOSYASI = "youtube_cookies_fixed.txt"
 
 def veritabani_yukle():
     try:
@@ -113,50 +112,54 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
                 sonuc.append(ham_cumle)
     return sonuc
 
-def cerez_dosyasini_onayila_ve_temizle():
+def netscape_cerezlerini_sozluge_cevir():
     """
-    Netscape formatındaki çerez dosyasını okur, yorum satırlarını siler, 
-    hatalı boşlukları ve sekmeleri temizleyerek kütüphanenin hata vermesini önler.
+    Kütüphanenin kilitlenmesini önlemek için Netscape cookies.txt dosyasını 
+    Python üzerinde güvenli bir şekilde okur ve dict (sözlük) formatına çevirir.
     """
+    cerez_sozlugu = {}
     if not os.path.exists(COOKIE_DOSYASI):
-        return False
+        st.sidebar.error("❌ Dosya Sistemi: youtube_cookies.txt bulunamadı.")
+        return None
     try:
-        gecerli_satirler = []
         with open(COOKIE_DOSYASI, "r", encoding="utf-8", errors="ignore") as f:
             for satir in f:
-                tsatir = satir.strip()
-                # Yorum satırı değilse ve içinde gerçek çerez verisi barındırıyorsa tut
-                if tsatir and not tsatir.startswith("#") and len(tsatir.split("\t")) >= 5:
-                    gecerli_satirler.append(satir)
-        
-        # Temizlenmiş yeni bir çerez dosyası oluştur
-        with open(TEMIZ_COOKIE_DOSYASI, "w", encoding="utf-8") as f_out:
-            f_out.writelines(gecerli_satirler)
-        return True
+                satir_temiz = satir.strip()
+                if not satir_temiz or satir_temiz.startswith("#"):
+                    continue
+                parcalar = satir_temiz.split("\t")
+                if len(parcalar) >= 7:
+                    # Netscape formatı: domain, flag, path, secure, expiration, name, value
+                    isim = parcalar[5]
+                    deger = parcalar[6]
+                    cerez_sozlugu[isim] = deger
+        return cerez_sozlugu if cerez_sozlugu else None
     except Exception as e:
-        st.sidebar.error(f"🔧 Filtreleme Hatası: {str(e)}")
-        return False
+        st.sidebar.error(f"🔧 Çerez Ayrıştırma Hatası: {str(e)}")
+        return None
 
 def premium_oturum_ile_transkript_cek(video_id):
     """
-    Filtrelenmiş ve optimize edilmiş çerez dosyası üzerinden 
-    YouTube Premium oturumuyla transkripti çeken ana işlev.
+    Güvenli sözlük formatına getirilmiş Premium çerezleri doğrudan kütüphane 
+    motoruna aktararak kilitlenmeleri aşan ana fonksiyon.
     """
     try:
-        cerez_hazir = cerez_dosyasini_onayila_ve_temizle()
-        target_cookies = TEMIZ_COOKIE_DOSYASI if cerez_hazir else COOKIE_DOSYASI
+        cerez_objesi = netscape_cerezlerini_sozluge_cevir()
         
-        if os.path.exists(target_cookies):
+        if cerez_objesi:
+            # Kütüphaneye dosya yolu yerine doğrudan ayrıştırılmış sözlük nesnesi veriyoruz
             altyazi_listesi = YouTubeTranscriptApi.get_transcript(
                 video_id, 
                 languages=['tr', 'en'], 
-                cookies=target_cookies
+                cookies=cerez_objesi
             )
             metin = " ".join([parca['text'] for parca in altyazi_listesi])
             if len(metin.strip()) > 30:
                 return metin
         else:
-            st.sidebar.error("❌ Kritik Rata: youtube_cookies.txt bulunamadı.")
+            st.sidebar.warning("⚠️ Çerezler sözlüğe dönüştürülemedi, anonim deneme yapılıyor...")
+            altyazi_listesi = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
+            return " ".join([parca['text'] for parca in altyazi_listesi])
     except Exception as e:
         st.sidebar.error(f"📋 Oturum/Sistem Mesajı: {str(e)}")
     return None
@@ -173,13 +176,13 @@ else:
     st.sidebar.info("Henüz geçmiş analiz bulunmuyor.")
 
 if os.path.exists(COOKIE_DOSYASI):
-    st.sidebar.success("👑 Premium Kimlik Doğrulama Dosyası Aktif!")
+    st.sidebar.success("👑 Premium Kimlik Doğrulama Dosyası Algılandı!")
 else:
     st.sidebar.error("⚠️ youtube_cookies.txt dosyası bulunamadı!")
 
 # --- ANA SAYFA PANELİ ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
-st.write("Premium Oturum Desteği ve Otomatik Çerez Filtreleme Altyapısı")
+st.write("Güvenli Oturum Enjeksiyonu ve Kesintisiz Çözüm Altyapısı")
 st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
@@ -193,7 +196,7 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
     else:
         v_id = youtube_id_bul_kesin(video_linki)
         
-        with st.spinner("🔄 Çerez formatı optimize ediliyor ve Premium tünel kuruluyor..."):
+        with st.spinner("🔄 Çerez haritası çıkarılıyor ve Premium kimlik doğrulaması tamamlanıyor..."):
             gelen_veri = premium_oturum_ile_transkript_cek(v_id)
             
         if gelen_veri:
@@ -211,7 +214,7 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
             st.success("🎉 Video verileri Premium oturumunuz üzerinden başarıyla çözümlendi!")
             st.rerun()
         else:
-            st.error("❌ Transkript katmanına otomatik olarak erişilemedi. Lütfen sol menüdeki 'Oturum/Sistem Mesajı' uyarısını kontrol edin.")
+            st.error("❌ Transkript katmanına otomatik olarak erişilemedi. Lütfen sol menüdeki '📋 Oturum/Sistem Mesajı' veya '🔧 Çerez Ayrıştırma Hatası' uyarısını kontrol edin.")
 
 st.divider()
 
@@ -240,4 +243,3 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not No
         st.divider()
         t_fmt = f"--- AI ANALIZ RAPORU ---\nTarih: {g.get('tarih','')}\n\nKritik Maddeler:\n"
         for m in g.get('ozet', []): t_fmt += f"{m}\n"
-        st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
