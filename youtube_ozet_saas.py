@@ -4,8 +4,8 @@ import os
 import re
 import urllib.request
 import urllib.parse
+import xml.etree.ElementTree
 from datetime import datetime
-from openai import OpenAI
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -15,9 +15,8 @@ VERITABANI_DOSYASI = "ozet_gecmisi.json"
 def veritabani_yukle():
     try:
         if os.path.exists(VERITABANI_DOSYASI):
-            f = open(VERITABANI_DOSYASI, "r", encoding="utf-8")
-            veri = json.load(f)
-            f.close()
+            with open(VERITABANI_DOSYASI, "r", encoding="utf-8") as f:
+                veri = json.load(f)
             if isinstance(veri, list):
                 return {"gecmis": veri}
             if isinstance(veri, dict) and "gecmis" in veri:
@@ -29,9 +28,8 @@ def veritabani_yukle():
 
 def veritabani_kaydet(veri):
     try:
-        f = open(VERITABANI_DOSYASI, "w", encoding="utf-8")
-        json.dump(veri, f, ensure_ascii=False, indent=4)
-        f.close()
+        with open(VERITABANI_DOSYASI, "w", encoding="utf-8") as f:
+            json.dump(veri, f, ensure_ascii=False, indent=4)
     except:
         pass
 
@@ -118,77 +116,65 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5, dil="tr"):
                 sonuc.append(ham_cumle)
     return sonuc
 
-def tarayici_tabanli_ses_indir(video_id, kayit_yolu):
+def resmi_api_altyazi_indir(video_id, api_key):
+    """
+    Resmi Google API kanallarını kullanarak altyazı listesini tarar 
+    ve yasal havuzdan veriyi çeker. IP blokajlarından etkilenmez.
+    """
     try:
-        api_url = f"https://b-cdn.net{video_id}"
-        req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
-        with urllib.request.urlopen(req, timeout=15) as response:
-            veri = json.loads(response.read().decode('utf-8'))
-            ses_url = veri.get("audio_url") or veri.get("url") or veri.get("data", {}).get("url")
-            if ses_url:
-                req_download = urllib.request.Request(ses_url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req_download, timeout=30) as ses_response:
-                    with open(kayit_yolu, "wb") as f:
-                        f.write(ses_response.read())
-                return True
-    except:
-        st.warning("⚠️ 1. Köprü denemesi başarısız, yedek CDN ayağa kaldırılıyor...")
-    
-    try:
-        yedek_url = f"https://vexdh.com{video_id}"
-        req_y = urllib.request.Request(yedek_url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req_y, timeout=15) as res_y:
-            veri_y = json.loads(res_y.read().decode('utf-8'))
-            ses_url_y = veri_y.get("url") or veri_y.get("audio")
-            if ses_url_y:
-                urllib.request.urlretrieve(ses_url_y, kayit_yolu)
-                return True
+        # 1. Aşama: Altyazı listesini iste
+        list_url = f"https://googleapis.com{video_id}&key={api_key}"
+        req = urllib.request.Request(list_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10) as res:
+            veri = json.loads(res.read().decode('utf-8'))
+        
+        items = veri.get("items", [])
+        if not items:
+            return None
+            
+        # Türkçe veya İngilizce altyazı ID'sini bul
+        caption_id = None
+        for item in items:
+            lang = item.get("snippet", {}).get("language", "")
+            if lang in ["tr", "en"]:
+                caption_id = item.get("id")
+                break
+        
+        if not caption_id:
+            caption_id = items[0].get("id") # Bulunamazsa ilkini seç
+            
+        # 2. Aşama: Altyazı içeriğini indir (Google Captions TTM formatı)
+        download_url = f"https://google.com{video_id}"
+        req_dl = urllib.request.Request(download_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req_dl, timeout=10) as res_dl:
+            xml_data = res_dl.read().decode('utf-8')
+            
+        if xml_data.strip() and "<text" in xml_data:
+            root = xml.etree.ElementTree.fromstring(xml_data)
+            metin_parcalari = [text.text for text in root.findall('.//text') if text.text]
+            if metin_parcalari:
+                return " ".join(metin_parcalari)
     except:
         pass
-    return False
-
-def whisper_ile_ses_analizi_zirhlı(video_id, api_anahtari):
-    if not api_anahtari:
-        st.error("❌ OpenAI API Key girmeden video analizi yapılamaz. Lütfen sol menüden anahtarınızı girin.")
-        return None
-    
-    hedef_dosya = f"tarayici_audio_{video_id}.m4a"
-    st.write("🌐 Sunucu ağ engeli tespit edildi. İstemci taraflı bağımsız CDN köprüsü üzerinden ses akışı çekiliyor...")
-    
-    basarili_mi = tarayici_tabanli_ses_indir(video_id, hedef_dosya)
-    
-    if not basarili_mi or not os.path.exists(hedef_dosya):
-        st.error("❌ YouTube ağ bariyerleri istemci köprüleriyle de aşılamadı. Lütfen videonun herkese açık olduğundan emin olun.")
-        return None
-        
-    try:
-        st.write("🚀 Ses akışı başarıyla klonlandı. OpenAI Whisper API ile metne dökülüyor...")
-        client = OpenAI(api_key=api_anahtari)
-        with open(hedef_dosya, "rb") as f:
-            transcription = client.audio.transcriptions.create(
-                model="whisper-1", 
-                file=f
-            )
-        try: os.remove(hedef_dosya)
-        except: pass
-        return transcription.text
-    except Exception as api_err:
-        st.error(f"❌ OpenAI Whisper API Bağlantı Hatası: {str(api_err)}")
-        if os.path.exists(hedef_dosya):
-            try: os.remove(hedef_dosya)
-            except: pass
     return None
 
 def video_analiz_tetikle(link, api_key, limit):
+    if not api_key:
+        st.error("❌ YouTube API Key girmeden resmi kanallardan video çekilemez. Lütfen sol menüden anahtarınızı girin.")
+        return
     if not link.strip():
         st.warning("Lütfen bir YouTube linki girin.")
         return
+        
     v_id = youtube_id_bul_kesin(link)
-    metin = whisper_ile_ses_analizi_zirhlı(v_id, api_key)
+    st.info("📥 Resmi Google API tünelleri üzerinden altyazı havuzu güvenle çekiliyor...")
+    
+    metin = resmi_api_altyazi_indir(v_id, api_key)
     if not metin:
-        st.error("❌ Ses dosyası çözülemedi. API anahtarınızı veya video linkinizi kontrol edin.")
+        st.error("❌ Bu videonun resmi altyazı (CC) havuzuna erişilemedi. Lütfen videonun altyazı içerdiğinden emin olun veya Doğrudan Metin Analizi modunu kullanın.")
         return
-    st.success("🎉 Ses bariyerleri tamamen parçalandı ve metne dönüştürüldü! Maddeler çıkarılıyor...")
+        
+    st.success("🎉 Veriler başarıyla alındı! Maddeler yapılandırılıyor...")
     ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=limit, dil="tr")
     ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
     simdi = datetime.now()
@@ -217,12 +203,12 @@ else:
 
 st.sidebar.divider()
 st.sidebar.title("🔑 API Ayarları")
-env_key = os.getenv("OPENAI_API_KEY", "")
-openai_key = st.sidebar.text_input("OpenAI API Key:", value=env_key, type="password", placeholder="sk-proj-...")
+env_key = os.getenv("YOUTUBE_API_KEY", "")
+youtube_key = st.sidebar.text_input("YouTube API Key (Resmi):", value=env_key, type="password", placeholder="AIzaSy...")
 
 # --- ANA SAYFA PANELİ ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
-st.write("Gelişmiş İstatistik Paneli ve Kolay Dışa Aktarma Sistemi")
+st.write("Gelişmiş İstatistik Paneli ve Resmi Google API Altyapısı")
 st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
@@ -230,8 +216,8 @@ madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, m
 # MODLAR
 st.subheader("📺 1. Mod: YouTube Video Analizi")
 video_linki = st.text_input("YouTube Linki veya Kodu:", value="", placeholder="https://youtube.com...", key="main_yt_box")
-if st.button("🚀 Videoyu İndir ve Yapay Zekayla Yorumla", key="main_yt_btn"):
-    video_analiz_tetikle(video_linki, openai_key, madde_limiti)
+if st.button("🚀 Videoyu Resmi API ile Çek ve Yorumla", key="main_yt_btn"):
+    video_analiz_tetikle(video_linki, youtube_key, madde_limiti)
 
 st.divider()
 
@@ -244,3 +230,18 @@ if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
         ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti, dil="tr")
         ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler]
         simdi = datetime.now()
+        veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": girilen_metin, "ozet": ozet_maddeleri}
+        gecmis_ekle(veri_paketi)
+        st.session_state["aktif_ozet"] = veri_paketi
+        st.rerun()
+
+# --- SONUÇ ALANI ---
+if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not None:
+    st.divider()
+    st.info("📂 **Analiz Sonucu**")
+    g = st.session_state["aktif_ozet"]
+    if isinstance(g, dict) and "ozet" in g:
+        for m in g.get('ozet', []):
+            st.write(m)
+        st.divider()
+        t_fmt = rapor_formatlarini_uret(g.get('tarih',''), g.get('saat',''), g.get('ozet', []))
