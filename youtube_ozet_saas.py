@@ -155,7 +155,7 @@ st.divider()
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
 st.subheader("📺 1. Mod: YouTube Video Analizi")
-video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://www.youtube.com/watch?v=...", key="main_yt_box")
+video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 
 # JAVASCRIPT KÖPRÜSÜ VE ASENKRON VERİ YÖNETİMİ
 if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn") and video_linki.strip():
@@ -165,13 +165,12 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn") and v
     st.info("🔄 Güvenli tarayıcı kanalı üzerinden video dökümü çözümleniyor, lütfen bekleyin...")
 
 if st.session_state["js_tetiklendi"]:
-    # Client-side çalışan akıllı altyazı yakalayıcı köprü
+    # Çakışmaları önlemek için tüm JS süslü parantezleri çiftlendi ({{ }}), sadece değişken tekli bırakıldı.
     js_bridge_code = f"""
     <script>
     async function istemciUzerindenAltyaziGetir() {{
         const videoId = "{st.session_state['mevcut_video_id']}";
         try {{
-            // Doğrudan kullanıcının tarayıcısının IP'sini kullanarak YouTube altyazı motorunu sorgular (IP engeline takılmaz)
             const proxyUrl = 'https://allorigins.win' + encodeURIComponent('https://youtubetranscript.com' + videoId);
             const response = await fetch(proxyUrl);
             const data = await response.json();
@@ -183,7 +182,7 @@ if st.session_state["js_tetiklendi"]:
                 let tamMetin = "";
                 for (let i = 0; i < lines.length; i++) {{
                     tamMetin += lines[i].textContent + " ";
-                }
+                }}
                 window.parent.postMessage({{type: 'streamlit:setComponentValue', value: tamMetin}}, '*');
             }} else {{
                 window.parent.postMessage({{type: 'streamlit:setComponentValue', value: 'ALTYAZI_YOK'}}, '*');
@@ -195,11 +194,10 @@ if st.session_state["js_tetiklendi"]:
     istemciUzerindenAltyaziGetir();
     </script>
     """
-    # Görünmez bir iframe bileşeniyle js çalıştırılır ve dönen değer yakalanır
     gelen_veri = components.html(js_bridge_code, height=0, width=0)
     
     if gelen_veri:
-        st.session_state["js_tetiklendi"] = False # Döngüyü kır
+        st.session_state["js_tetiklendi"] = False
         if gelen_veri == "ALTYAZI_YOK":
             st.error("❌ Bu videoya ait otomatik veya manuel oluşturulmuş bir altyazı dökümü bulunamadı.")
         elif gelen_veri == "HATA":
