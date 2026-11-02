@@ -2,8 +2,9 @@ import streamlit as st
 import json
 import os
 import re
+import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import datetime
-import streamlit.components.v1 as components
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -111,6 +112,49 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
                 sonuc.append(ham_cumle)
     return sonuc
 
+def sunucu_tabanli_altyazi_cek(video_id):
+    """
+    Tarayıcı JavaScript motoruna bağımlı kalmaksızın, doğrudan Python sunucu katmanından 
+    YouTube altyazı izlerini (timedtext) taklitçi ağ istekleriyle çeker.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache"
+    }
+    try:
+        # Doğrudan transkript sağlayıcı küresel bir ayna (mirror) uç noktası kullanılır
+        url = f"https://v0.lat{video_id}"
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            res_data = response.read().decode("utf-8")
+            veri = json.loads(res_data)
+            
+            if isinstance(veri, list):
+                parcalar = [item.get("text", "") for item in veri if item.get("text")]
+                if parcalar:
+                    return " ".join(parcalar)
+            elif isinstance(veri, dict) and "transcript" in veri:
+                return veri["transcript"]
+    except:
+        pass
+
+    # Yedek Plan: YouTube timedtext ham API simülasyonu
+    try:
+        yedek_url = f"https://youtube.com{video_id}&lang=tr&fmt=srv1"
+        req_y = urllib.request.Request(yedek_url, headers=headers)
+        with urllib.request.urlopen(req_y, timeout=8) as response_y:
+            xml_data = response_y.read().decode("utf-8")
+            if xml_data.strip() and "<text" in xml_data:
+                root = ET.fromstring(xml_data)
+                parcalar = [t.text for t in root.findall(".//text") if t.text]
+                if parcalar:
+                    return " ".join(parcalar)
+    except:
+        pass
+    return None
+
 # --- SIDEBAR ---
 st.sidebar.title("📜 Analiz Geçmişiniz")
 veri_havuzu = veritabani_yukle()
@@ -132,106 +176,64 @@ madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, m
 st.subheader("📺 1. Mod: YouTube Video Analizi")
 video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 
-if video_linki.strip():
-    v_id = youtube_id_bul_kesin(video_linki)
-    
-    # 🔒 RESMİ YOUTUBE OYNATICI API KÖPRÜSÜ (CORS & IP BYPASS)
-    js_bridge_html = f"""
-    <div id="status-box" style="font-family:sans-serif; background-color:#e8f5e9; padding:12px; border-radius:8px; color:#2e7d32; font-size:14px; margin-bottom:10px; font-weight:bold;">
-        ✅ Resmi YouTube API Modülü Hazırlandı. Video verileri deşifre ediliyor...
-    </div>
-    <!-- Gizli Resmi Oynatıcı DOM Elemanı -->
-    <div id="yt-official-player" style="position:absolute; width:1px; height:1px; opacity:0.01; pointer-events:none;"></div>
-
-    <script>
-    // YouTube Iframe API asenkron yükleyici hattı
-    if (!window.YT) {{
-        var tag = document.createElement('script');
-        tag.src = "https://youtube.com";
-        var firstScriptTag = document.getElementsByTagName('script')[0];
-        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-    }}
-
-    var player;
-    window.onYouTubeIframeAPIReady = function() {{
-        player = new YT.Player('yt-official-player', {{
-            videoId: '{v_id}',
-            playerVars: {{
-                'cc_load_policy': 1,
-                'cc_lang_pref': 'tr'
-            }},
-            events: {{
-                'onReady': onPlayerReady
-            }}
-        }});
-    }};
-
-    function onPlayerReady(event) {{
-        const statusBox = document.getElementById("status-box");
-        const videoId = "{v_id}";
+if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
+    if not video_linki.strip():
+        st.warning("Lütfen bir YouTube linki girin.")
+    else:
+        v_id = youtube_id_bul_kesin(video_linki)
         
-        // Resmi timedtext API'sine tarayıcı kimliği üzerinden direkt yasal çağrı yapılması
-        const targetUrl = 'https://youtube.com' + videoId + '&lang=tr&fmt=srv1';
-        
-        fetch(targetUrl)
-        .then(res => res.text())
-        .then(xmlText => {{
-            if (xmlText && xmlText.includes('<text')) {{
-                var parser = new DOMParser();
-                var xmlDoc = parser.parseFromString(xmlText, "text/xml");
-                var lines = xmlDoc.getElementsByTagName("text");
-                var tamMetin = "";
-                for (var i = 0; i < lines.length; i++) {{
-                    tamMetin += lines[i].textContent + " ";
-                }}
-                
-                // Streamlit form elementine asenkron tünelleme
-                const textarea = window.parent.document.querySelector('textarea[aria-label="Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:"]');
-                if (textarea) {{
-                    textarea.value = tamMetin.trim();
-                    textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                    statusBox.innerHTML = "🎉 Video veri katmanı başarıyla deşifre edildi ve kutuya aktarıldı! 'Metni Analiz Et' butonuna basabilirsiniz.";
-                    statusBox.style.backgroundColor = "#e8f5e9";
-                    statusBox.style.color = "#2e7d32";
-                }}
-            }} else {{
-                // Alternatif dil taraması (İngilizce vb.)
-                fetch('https://youtube.com' + videoId + '&fmt=srv1')
-                .then(r => r.text())
-                .then(altXml => {{
-                    if(altXml && altXml.includes('<text')) {{
-                        var parser = new DOMParser();
-                        var xmlDoc = parser.parseFromString(altXml, "text/xml");
-                        var lines = xmlDoc.getElementsByTagName("text");
-                        var tamMetin = "";
-                        for (var i = 0; i < lines.length; i++) {{
-                            tamMetin += lines[i].textContent + " ";
-                        }}
-                        const textarea = window.parent.document.querySelector('textarea[aria-label="Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:"]');
-                        if (textarea) {{
-                            textarea.value = tamMetin.trim();
-                            textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                            statusBox.innerHTML = "🎉 Video dökümü (Mevcut Dil) başarıyla alındı! 'Metni Analiz Et' butonuna basabilirsiniz.";
-                        }}
-                    }} else {{
-                        statusBox.innerHTML = "💡 Altyazı katmanı doğrudan çözülemedi. Lütfen metni aşağıdaki alana kopyalayarak analizi tamamlayın.";
-                        statusBox.style.backgroundColor = "#fff3e0";
-                        statusBox.style.color = "#e65100";
-                    }}
-                }});
-            }}
-        }})
-        .catch(err => {{
-            statusBox.innerHTML = "💡 Altyazı katmanı doğrudan çözülemedi. Lütfen metni aşağıdaki alana kopyalayarak analizi tamamlayın.";
-            statusBox.style.backgroundColor = "#fff3e0";
-            statusBox.style.color = "#e65100";
-        }});
-    }}
-    // API hazır olmama ihtimaline karşı tetikleyici emniyet sigortası
-    if(window.YT && window.YT.Player) {{ onYouTubeIframeAPIReady(); }}
-    </script>
-    """
-    components.html(js_bridge_html, height=75)
+        with st.spinner("🔄 JavaScript bağımlılıkları atlanıyor... Sunucu veri hattından doğrudan transkript çözümleniyor..."):
+            gelen_veri = sunucu_tabanli_altyazi_cek(v_id)
+            
+        if gelen_veri:
+            ham_maddeler = yerel_mantik_ozetleyici(gelen_veri, madde_sayisi=madde_limiti)
+            ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
+            simdi = datetime.now()
+            veri_paketi = {
+                "tarih": simdi.strftime("%d.%m.%Y"), 
+                "saat": simdi.strftime("%H:%M:%S"), 
+                "metin": gelen_veri, 
+                "ozet": ozet_maddeleri
+            }
+            gecmis_ekle(veri_paketi)
+            st.session_state["aktif_ozet"] = veri_paketi
+            st.success("🎉 Video verileri başarıyla çözümlendi!")
+            st.rerun()
+        else:
+            st.error("❌ Bu videonun transkript katmanına erişilemedi. Lütfen videonun herkese açık olduğundan veya altyazı (otomatik veya manuel) içerdiğinden emin olun.")
 
 st.divider()
 
+st.subheader("📝 2. Mod: Doğrudan Metin Analizi")
+girilen_metin = st.text_area("Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:", height=150, key="main_text_box")
+
+if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
+    if not girilen_metin.strip():
+        st.warning("Lütfen analiz edilecek bir metin girin.")
+    else:
+        ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti)
+        ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler]
+        simdi = datetime.now()
+        veri_paketi = {
+            "tarih": simdi.strftime("%d.%m.%Y"), 
+            "saat": simdi.strftime("%H:%M:%S"), 
+            "metin": girilen_metin, 
+            "ozet": ozet_maddeleri
+        }
+        gecmis_ekle(veri_paketi)
+        st.session_state["aktif_ozet"] = veri_paketi
+        st.rerun()
+
+# --- SONUÇ ALANI ---
+if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not None:
+    st.divider()
+    st.info("📂 **Analiz Sonucu**")
+    g = st.session_state["aktif_ozet"]
+    if isinstance(g, dict) and "ozet" in g:
+        for m in g.get('ozet', []):
+            st.write(m)
+        st.divider()
+        txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {g.get('tarih','')}\n\nKritik Maddeler:\n"
+        for m in g.get('ozet', []): 
+            txt_cikisi += f"{m}\n"
+        st.download_button(label="📥 TXT Olarak İndir", data=txt_cikisi.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
