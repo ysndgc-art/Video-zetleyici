@@ -130,7 +130,7 @@ st.divider()
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
 st.subheader("📺 1. Mod: YouTube Video Analizi")
-video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://www.youtube.com/watch?v=...", key="main_yt_box")
+video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 
 if video_linki.strip():
     v_id = youtube_id_bul_kesin(video_linki)
@@ -168,7 +168,6 @@ if video_linki.strip():
                     statusBox.style.backgroundColor = "#e8f5e9";
                     statusBox.style.color = "#2e7d32";
                 }} else {{
-                    // Fallback: Doğrudan parent elemente alternatif erişim dene
                     window.parent.postMessage({{type: 'streamlit:set_widget_value', from: 'js_bridge', value: tamMetin.trim()}}, '*');
                 }}
             }} else {{
@@ -176,7 +175,7 @@ if video_linki.strip():
                 statusBox.style.backgroundColor = "#fff3e0";
                 statusBox.style.color = "#e65100";
             }}
-        } catch(e) {{
+        }} catch(e) {{
             statusBox.innerHTML = "💡 Video verisi otomatik doldurulamadı. Lütfen metni aşağıdaki alana kopyalayarak analizi tamamlayın.";
             statusBox.style.backgroundColor = "#fff3e0";
             statusBox.style.color = "#e65100";
