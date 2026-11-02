@@ -10,6 +10,7 @@ st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", 
 
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
 COOKIE_DOSYASI = "youtube_cookies.txt"
+TEMIZ_COOKIE_DOSYASI = "youtube_cookies_fixed.txt"
 
 def veritabani_yukle():
     try:
@@ -112,23 +113,50 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
                 sonuc.append(ham_cumle)
     return sonuc
 
+def cerez_dosyasini_onayila_ve_temizle():
+    """
+    Netscape formatındaki çerez dosyasını okur, yorum satırlarını siler, 
+    hatalı boşlukları ve sekmeleri temizleyerek kütüphanenin hata vermesini önler.
+    """
+    if not os.path.exists(COOKIE_DOSYASI):
+        return False
+    try:
+        gecerli_satirler = []
+        with open(COOKIE_DOSYASI, "r", encoding="utf-8", errors="ignore") as f:
+            for satir in f:
+                tsatir = satir.strip()
+                # Yorum satırı değilse ve içinde gerçek çerez verisi barındırıyorsa tut
+                if tsatir and not tsatir.startswith("#") and len(tsatir.split("\t")) >= 5:
+                    gecerli_satirler.append(satir)
+        
+        # Temizlenmiş yeni bir çerez dosyası oluştur
+        with open(TEMIZ_COOKIE_DOSYASI, "w", encoding="utf-8") as f_out:
+            f_out.writelines(gecerli_satirler)
+        return True
+    except Exception as e:
+        st.sidebar.error(f"🔧 Filtreleme Hatası: {str(e)}")
+        return False
+
 def premium_oturum_ile_transkript_cek(video_id):
     """
-    Mevcut cookies dosyasını kullanarak YouTube altyazı motoruna 
-    aktaran optimize edilmiş Premium işlev.
+    Filtrelenmiş ve optimize edilmiş çerez dosyası üzerinden 
+    YouTube Premium oturumuyla transkripti çeken ana işlev.
     """
     try:
-        if os.path.exists(COOKIE_DOSYASI):
+        cerez_hazir = cerez_dosyasini_onayila_ve_temizle()
+        target_cookies = TEMIZ_COOKIE_DOSYASI if cerez_hazir else COOKIE_DOSYASI
+        
+        if os.path.exists(target_cookies):
             altyazi_listesi = YouTubeTranscriptApi.get_transcript(
                 video_id, 
                 languages=['tr', 'en'], 
-                cookies=COOKIE_DOSYASI
+                cookies=target_cookies
             )
             metin = " ".join([parca['text'] for parca in altyazi_listesi])
             if len(metin.strip()) > 30:
                 return metin
         else:
-            st.sidebar.error("❌ Kritik Hata: youtube_cookies.txt bulunamadı.")
+            st.sidebar.error("❌ Kritik Rata: youtube_cookies.txt bulunamadı.")
     except Exception as e:
         st.sidebar.error(f"📋 Oturum/Sistem Mesajı: {str(e)}")
     return None
@@ -151,7 +179,7 @@ else:
 
 # --- ANA SAYFA PANELİ ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
-st.write("Premium Oturum Desteği ve Kesintisiz Çözüm Altyapısı")
+st.write("Premium Oturum Desteği ve Otomatik Çerez Filtreleme Altyapısı")
 st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
@@ -165,7 +193,7 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
     else:
         v_id = youtube_id_bul_kesin(video_linki)
         
-        with st.spinner("🔄 Premium ağ geçidi aktif ediliyor... Transkript güvenle indiriliyor..."):
+        with st.spinner("🔄 Çerez formatı optimize ediliyor ve Premium tünel kuruluyor..."):
             gelen_veri = premium_oturum_ile_transkript_cek(v_id)
             
         if gelen_veri:
@@ -180,7 +208,7 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
             }
             gecmis_ekle(veri_paketi)
             st.session_state["aktif_ozet"] = veri_paketi
-            st.success("🎉 Video verileri Premium hesabınız aracılığıyla başarıyla çözümlendi!")
+            st.success("🎉 Video verileri Premium oturumunuz üzerinden başarıyla çözümlendi!")
             st.rerun()
         else:
             st.error("❌ Transkript katmanına otomatik olarak erişilemedi. Lütfen sol menüdeki 'Oturum/Sistem Mesajı' uyarısını kontrol edin.")
