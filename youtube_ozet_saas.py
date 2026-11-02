@@ -2,9 +2,8 @@ import streamlit as st
 import json
 import os
 import re
-import urllib.request
-import xml.etree.ElementTree as ET
 from datetime import datetime
+import streamlit.components.v1 as components
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -112,74 +111,6 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
                 sonuc.append(ham_cumle)
     return sonuc
 
-def video_analiz_proses_et(metin, limit):
-    if not isinstance(metin, str) or len(metin.strip()) < 15:
-        st.error("❌ Belirtilen videoya ait transkript akışı boş veya çok kısa.")
-        return
-        
-    ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=limit)
-    ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
-    simdi = datetime.now()
-    veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri}
-    gecmis_ekle(veri_paketi)
-    st.session_state["aktif_ozet"] = veri_paketi
-
-def engelsiz_orijinal_youtube_motoru(video_id):
-    """
-    URL hataları düzeltilmiş, sunucu kısıtlamalarını aşmak için yedekli 
-    çalışan otomatik transkript motoru.
-    """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Referer": "https://youtube.com"
-    }
-    
-    # 1. Aşama: Düzeltilmiş Resmi YouTube Türkçe Altyazı Endpoint Entegrasyonu (Eğik Çizgi Hatası Giderildi)
-    try:
-        url_tr = f"https://youtube.com/api/timedtext?v={video_id}&lang=tr&fmt=srv1"
-        req = urllib.request.Request(url_tr, headers=headers)
-        with urllib.request.urlopen(req, timeout=5) as response:
-            xml_data = response.read().decode("utf-8")
-            if xml_data.strip() and "<text" in xml_data:
-                root = ET.fromstring(xml_data)
-                parcalar = [t.text for t in root.findall(".//text") if t.text]
-                if parcalar:
-                    return " ".join(parcalar)
-    except:
-        pass
-
-    # 2. Aşama: Düzeltilmiş Resmi YouTube Birincil Altyazı Endpoint Entegrasyonu
-    try:
-        url_default = f"https://youtube.com/api/timedtext?v={video_id}&fmt=srv1"
-        req_d = urllib.request.Request(url_default, headers=headers)
-        with urllib.request.urlopen(req_d, timeout=5) as response_d:
-            xml_data_d = response_d.read().decode("utf-8")
-            if xml_data_d.strip() and "<text" in xml_data_d:
-                root_d = ET.fromstring(xml_data_d)
-                parcalar_d = [t.text for t in root_d.findall(".//text") if t.text]
-                if parcalar_d:
-                    return " ".join(parcalar_d)
-    except:
-        pass
-
-    # 3. Aşama: Sunucu IP Engellerini Bypass Eden Açık Kaynak Dağıtık Transkript Uç Noktası (B Planı Otomasyonu)
-    try:
-        url_proxy = f"https://v0.lat{video_id}"
-        req_p = urllib.request.Request(url_proxy, headers={"User-Agent": headers["User-Agent"]})
-        with urllib.request.urlopen(req_p, timeout=5) as response_p:
-            veri = json.loads(response_p.read().decode("utf-8"))
-            if isinstance(veri, list):
-                parcalar_p = [item.get("text", "") for item in veri if item.get("text")]
-                if parcalar_p:
-                    return " ".join(parcalar_p)
-            elif isinstance(veri, dict) and "transcript" in veri:
-                return veri["transcript"]
-    except:
-        pass
-
-    return None
-
 # --- SIDEBAR ---
 st.sidebar.title("📜 Analiz Geçmişiniz")
 veri_havuzu = veritabani_yukle()
@@ -198,24 +129,84 @@ st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
+# Kullanıcı tarayıcısından URL yoluyla gelen veriyi yakala ve session_state içerisine güvenle işle
+query_params = st.query_params
+if "transkript_payload" in query_params:
+    ham_payload = query_params["transkript_payload"]
+    if len(ham_payload.strip()) > 20:
+        st.session_state["otomatik_gelen_metin"] = ham_payload
+    st.query_params.clear()
+
 st.subheader("📺 1. Mod: YouTube Video Analizi")
 video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 
-if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
-    if not video_linki.strip():
-        st.warning("Lütfen bir YouTube linki girin.")
-    else:
-        v_id = youtube_id_bul_kesin(video_linki)
+if video_linki.strip():
+    v_id = youtube_id_bul_kesin(video_linki)
+    
+    # 🔒 KULLANICI IP TABANLI VERI TÜNELI (CORS & IP BYPASS PRO)
+    js_bridge_html = f"""
+    <div id="status-panel" style="font-family:sans-serif; background-color:#e8f5e9; padding:12px; border-radius:8px; color:#2e7d32; font-size:14px; font-weight:bold;">
+        🔄 Kullanıcı internet ağ geçidi üzerinden video transkript katmanı deşifre ediliyor...
+    </div>
+    <script>
+    async function tarayiciGecidiSorgula() {{
+        const vId = "{v_id}";
+        const statusPanel = document.getElementById("status-panel");
         
-        with st.spinner("🔄 Gelişmiş veri tünelleri optimize ediliyor... Transkript otomatik olarak indiriliyor..."):
-            gelen_veri = engelsiz_orijinal_youtube_motoru(v_id)
-            
-        if gelen_veri:
-            video_analiz_proses_et(gelen_veri, madde_limiti)
-            st.success("🎉 Video verileri başarıyla çözümlendi! Kritik maddeler aşağıda listelenmiştir.")
-            st.rerun()
-        else:
-            st.error("❌ Bu videonun transkript katmanına otomatik olarak erişilemedi. Lütfen videonun herkese açık olduğundan ve altyazı seçeneğinin aktif olduğundan emin olun.")
+        // Sunucu engellerini tamamen aşan, doğrudan kullanıcının kendi IP'si üzerinden beslenen en stabil açık API hattı
+        const endpoints = [
+            'https://vevioz.com' + vId,
+            'https://appspot.com' + vId
+        ];
+        
+        let basariliMetin = "";
+        
+        for (let url of endpoints) {{
+            try {{
+                const res = await fetch(url);
+                const data = await res.json();
+                if (Array.isArray(data)) {{
+                    basariliMetin = data.map(item => item.text || "").join(" ");
+                }} else if (data && data.transcript) {{
+                    basariliMetin = data.transcript;
+                }}
+                if (basariliMetin.trim().length > 30) break;
+            }} catch(e) {{ continue; }}
+        }}
+        
+        if (basariliMetin.trim().length > 30) {{
+            statusPanel.innerHTML = "✅ Veri başarıyla deşifre edildi! Sayfa reaktif olarak güncelleniyor...";
+            // Streamlit reaktif tetikleyici parametre enjeksiyonu
+            const mainUrl = window.parent.location.origin + window.parent.location.pathname + "?transkript_payload=" + encodeURIComponent(basariliMetin.trim());
+            window.parent.location.href = mainUrl;
+        }} else {{
+            statusPanel.innerHTML = "❌ Bu videoda otomatik transkript katmanı bulunamadı veya video kısıtlı.";
+            statusPanel.style.backgroundColor = "#ffebee";
+            statusPanel.style.color = "#c62828";
+        }}
+    }}
+    setTimeout(tarayiciGecidiSorgula, 700);
+    </script>
+    """
+    components.html(js_bridge_html, height=65)
+
+# Eğer tarayıcı tüneli veriyi getirip URL'e fırlattıysa Python tarafında analizi otomatik başlat
+if "otomatik_gelen_metin" in st.session_state and st.session_state["otomatik_gelen_metin"]:
+    cozulen_metin = st.session_state["otomatik_gelen_metin"]
+    st.session_state["otomatik_gelen_metin"] = None  # Sonsuz döngü koruması
+    
+    ham_maddeler = yerel_mantik_ozetleyici(cozulen_metin, madde_sayisi=madde_limiti)
+    ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
+    simdi = datetime.now()
+    veri_paketi = {
+        "tarih": simdi.strftime("%d.%m.%Y"), 
+        "saat": simdi.strftime("%H:%M:%S"), 
+        "metin": cozulen_metin, 
+        "ozet": ozet_maddeleri
+    }
+    gecmis_ekle(veri_paketi)
+    st.session_state["aktif_ozet"] = veri_paketi
+    st.success("🎉 Video verileri başarıyla çözümlendi!")
 
 st.divider()
 
@@ -242,3 +233,6 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not No
         for m in g.get('ozet', []):
             st.write(m)
         st.divider()
+        t_fmt = f"--- AI ANALIZ RAPORU ---\nTarih: {g.get('tarih','')}\n\nKritik Maddeler:\n"
+        for m in g.get('ozet', []): t_fmt += f"{m}\n"
+        st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
