@@ -4,3 +4,5 @@ reportlab
 deep-translator
 youtube-transcript-api
 openai
+SpeechRecognition
+pydub
