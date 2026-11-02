@@ -2,10 +2,8 @@ import streamlit as st
 import json
 import os
 import re
-import urllib.request
-import xml.etree.ElementTree as ET
 from datetime import datetime
-from bs4 import BeautifulSoup
+import streamlit.components.v1 as components
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -113,85 +111,6 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
                 sonuc.append(ham_cumle)
     return sonuc
 
-def video_analiz_proses_et(metin, limit):
-    if not isinstance(metin, str) or len(metin.strip()) < 15:
-        st.error("❌ Belirtilen videoya ait transkript akışı boş veya çok kısa.")
-        return
-        
-    ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=limit)
-    ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
-    simdi = datetime.now()
-    veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri}
-    gecmis_ekle(veri_paketi)
-    st.session_state["aktif_ozet"] = veri_paketi
-
-def engelsiz_manifesto_kanaliyla_altyazi_cek(video_id):
-    """
-    YouTube oyuncu verilerinin içindeki gizli altyazı izlerini (captionTracks) 
-    yakalar, yasal kısıtlamalara takılmadan XML çıktısını düz metne dönüştürür.
-    """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
-    }
-    try:
-        # 1. Aşama: YouTube embed veya izleme sayfasından ham veriyi indir
-        url = f"https://youtube.com{video_id}"
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as response:
-            html = response.read().decode("utf-8")
-
-        # playerCaptionsTracklistRenderer JSON yapısını sayfa içinden ayıkla
-        json_match = re.search(r'"playerCaptionsTracklistRenderer":\s*({.*?})', html)
-        if json_match:
-            captions_json = json.loads(json_match.group(1))
-            caption_tracks = captions_json.get("captionTracks", [])
-            
-            target_url = None
-            # Önce Türkçe (tr) dilindeki resmi veya otomatik parçayı ara
-            for track in caption_tracks:
-                if track.get("languageCode") == "tr":
-                    target_url = track.get("baseUrl")
-                    break
-            
-            # Türkçe yoksa İngilizceye veya mevcut ilk dil kanalına odaklan
-            if not target_url and caption_tracks:
-                for track in caption_tracks:
-                    if track.get("languageCode") == "en":
-                        target_url = track.get("baseUrl")
-                        break
-                if not target_url:
-                    target_url = caption_tracks[0].get("baseUrl")
-            
-            if target_url:
-                # Srv1 srv2 veya srv3 gibi saf srv formatına zorla (XML çıktısı almak için)
-                if "fmt=" not in target_url:
-                    target_url += "&fmt=srv1"
-                
-                # 2. Aşama: Altyazı XML dosyasını indir ve ayrıştır
-                req_xml = urllib.request.Request(target_url, headers=headers)
-                with urllib.request.urlopen(req_xml, timeout=10) as xml_res:
-                    xml_data = xml_res.read().decode("utf-8")
-                
-                if xml_data.strip() and "<text" in xml_data:
-                    root = ET.fromstring(xml_data)
-                    parcalar = [t.text for t in root.findall(".//text") if t.text]
-                    if parcalar:
-                        full_text = " ".join(parcalar)
-                        # HTML etiketlerini ve entity'leri güzelce temizle
-                        full_text = BeautifulSoup(full_text, "html.parser").get_text()
-                        return full_text
-    except Exception as e:
-        pass
-    return None
-
-def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
-    txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {tarih} - {saat}\n"
-    if baslik_url: txt_cikisi += f"Kaynak: {baslik_url}\n"
-    txt_cikisi += "\nKritik Maddeler:\n"
-    for m in maddeler: txt_cikisi += f"{m}\n"
-    return txt_cikisi
-
 # --- SIDEBAR ---
 st.sidebar.title("📜 Analiz Geçmişiniz")
 veri_havuzu = veritabani_yukle()
@@ -213,26 +132,83 @@ madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, m
 st.subheader("📺 1. Mod: YouTube Video Analizi")
 video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 
-if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
-    if not video_linki.strip():
-        st.warning("Lütfen bir YouTube linki girin.")
-    else:
-        v_id = youtube_id_bul_kesin(video_linki)
-        
-        with st.spinner("🔄 API kısıtlamaları bypass ediliyor... Doğrudan video manifestosu üzerinden transkript çözümleniyor..."):
-            gelen_veri = engelsiz_manifesto_kanaliyla_altyazi_cek(v_id)
+if video_linki.strip():
+    v_id = youtube_id_bul_kesin(video_linki)
+    
+    # KULLANICI TARAYICISI ÜZERİNDEN DOĞRUDAN ENGELSİZ BAĞLANTI KÖPRÜSÜ
+    js_bridge_html = f"""
+    <div id="status-box" style="font-family:sans-serif; background-color:#f0f2f6; padding:12px; border-radius:8px; color:#333; font-size:14px;">
+        🔄 Kullanıcı yerel ağ geçidi üzerinden video döküm verileri işleniyor...
+    </div>
+    <script>
+    async function tarayiciUzerindenCek() {{
+        const vId = "{v_id}";
+        const statusBox = document.getElementById("status-box");
+        try {{
+            // Doğrudan kullanıcının tarayıcısından istek atıldığı için bulut IP engeli tamamen aşılır
+            const response = await fetch('https://allorigins.win' + encodeURIComponent('https://youtubetranscript.com' + vId));
+            const data = await response.json();
             
-        if gelen_veri:
-            video_analiz_proses_et(gelen_veri, madde_limiti)
-            st.success("🎉 Video verileri başarıyla çözümlendi! Kritik maddeler aşağıda listelenmiştir.")
-            st.rerun()
-        else:
-            st.error("❌ Bu videonun transkript katmanına erişilemedi. Lütfen videonun herkese açık olduğundan ve altyazı seçeneğinin (otomatik veya manuel) aktif olduğundan emin olun.")
+            if (data.contents && data.contents.includes('<text')) {{
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(data.contents, "text/xml");
+                const lines = xmlDoc.getElementsByTagName("text");
+                let metinHavuzu = "";
+                for (let i = 0; i < lines.length; i++) {{
+                    metinHavuzu += lines[i].textContent + " ";
+                }}
+                
+                // Streamlit form alanını arka planda güvenle besle
+                const textarea = window.parent.document.querySelector('textarea[aria-label="Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:"]');
+                if (textarea) {{
+                    textarea.value = metinHavuzu.trim();
+                    textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    statusBox.innerHTML = "✅ Video verisi başarıyla yakalandı! Aşağıdaki panelden <b>'Metni Analiz Et'</b> butonuna tıklayarak raporunuzu üretebilirsiniz.";
+                    statusBox.style.backgroundColor = "#e8f5e9";
+                    statusBox.style.color = "#2e7d32";
+                }}
+            }} else {{
+                statusBox.innerHTML = "⚠️ Bu video için otomatik/manuel üretilmiş transkript katmanı bulunamadı veya video korumalı.";
+                statusBox.style.backgroundColor = "#ffebee";
+                statusBox.style.color = "#c62828";
+            }}
+        }} catch(e) {{
+            statusBox.innerHTML = "❌ Güvenli veri tünelinde tarayıcı CORS kısıtlaması algılandı.";
+            statusBox.style.backgroundColor = "#ffebee";
+            statusBox.style.color = "#c62828";
+        }}
+    }}
+    setTimeout(tarayiciUzerindenCek, 600);
+    </script>
+    """
+    components.html(js_bridge_html, height=75)
 
 st.divider()
 
 st.subheader("📝 2. Mod: Doğrudan Metin Analizi")
 girilen_metin = st.text_area("Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:", height=150, key="main_text_box")
+
 if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
     if not girilen_metin.strip():
-        st.warning("Lütfen metin girin.")
+        st.warning("Lütfen analiz edilecek bir içeriği buraya yapıştırın veya yukarıya geçerli bir link girin.")
+    else:
+        ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti)
+        ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler]
+        simdi = datetime.now()
+        veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": girilen_metin, "ozet": ozet_maddeleri}
+        gecmis_ekle(veri_paketi)
+        st.session_state["aktif_ozet"] = veri_paketi
+        st.rerun()
+
+# --- SONUÇ ALANI ---
+if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not None:
+    st.divider()
+    st.info("📂 **Analiz Sonucu**")
+    g = st.session_state["aktif_ozet"]
+    if isinstance(g, dict) and "ozet" in g:
+        for m in g.get('ozet', []):
+            st.write(m)
+        st.divider()
+        txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {g.get('tarih','')}\n\nKritik Maddeler:\n"
+        for m in g.get('ozet', []): txt_cikisi += f"{m}\n"
+        st.download_button(label="📥 TXT Olarak İndir", data=txt_cikisi.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
