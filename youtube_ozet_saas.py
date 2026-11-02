@@ -3,6 +3,7 @@ import json
 import os
 import re
 import urllib.request
+import html
 from datetime import datetime
 
 # --- SAYFA YAPILANDIRMASI ---
@@ -111,81 +112,60 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
                 sonuc.append(ham_cumle)
     return sonuc
 
-def evrensel_json_metin_ayristirici(veri_objesi):
+def youtube_resmi_kodundan_altyazi_sorgula(video_id):
     """
-    API'lerden gelen karmaşık, iç içe geçmiş veya zaman damgalı JSON objelerini 
-    derinlemesine tarayarak saf transkript metnine dönüştüren evrensel tarayıcı.
+    YouTube video sayfasının HTML kodunu indirip, içerisindeki yerleşik 
+    altyazi parça izlerini (captionTracks) bularak doğrudan metne çeviren kararlı motor.
     """
-    parcalar = []
-    
-    # Senaryo 1: Doğrudan liste formatı (Düz metin dizileri veya sözlük listesi)
-    if isinstance(veri_objesi, list):
-        for item in veri_objesi:
-            if isinstance(item, str):
-                parcalar.append(item)
-            elif isinstance(item, dict):
-                # 'text', 'text_val', 'line' gibi popüler tüm anahtarları kontrol et
-                for key in ["text", "text_val", "line", "transcript", "data"]:
-                    if key in item and item[key]:
-                        parcalar.append(str(item[key]))
-                        break
-                        
-    # Senaryo 2: Gelişmiş anahtarlı sözlük yapısı (yt-api veya kompleks yapılar)
-    elif isinstance(veri_objesi, dict):
-        if "transcript" in veri_objesi and isinstance(veri_objesi["transcript"], str):
-            return veri_objesi["transcript"].strip()
-            
-        # İç içe geçmiş veri listelerini (data, lines, segments) tara
-        for root_key in ["data", "lines", "segments", "transcript", "subtitles"]:
-            if root_key in veri_objesi:
-                alt_veri = veri_objesi[root_key]
-                if isinstance(alt_veri, list):
-                    for sub_item in alt_veri:
-                        if isinstance(sub_item, dict) and "text" in sub_item:
-                            parcalar.append(str(sub_item["text"]))
-                        elif isinstance(sub_item, str):
-                            parcalar.append(sub_item)
-                elif isinstance(alt_veri, str):
-                    return alt_veri.strip()
-                    
-    temiz_sonuc = " ".join(parcalar).strip()
-    return temiz_sonuc if len(temiz_sonuc) > 30 else None
-
-def sunucu_tarafli_kesintisiz_transkript_motoru(video_id):
-    """
-    CORS kısıtlamalarından muaf, evrensel veri ayıklayıcı entegreli 
-    kesintisiz Python tünel motoru.
-    """
+    url = f"https://youtube.com{video_id}"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "Accept": "application/json",
-        "Origin": "https://youtube.com",
-        "Referer": "https://youtube.com/"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
     }
     
-    # Küresel deşifre ağ geçitleri (Doğru endpoint eğik çizgileri entegre edildi)
-    endpoints = [
-        f"https://v0.lat{video_id}",
-        f"https://yt-api.com{video_id}",
-        f"https://v0.lat{video_id}"
-    ]
-    
-    for url in endpoints:
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=8) as response:
-                ham_veri = response.read().decode("utf-8")
-                if not ham_veri.strip():
-                    continue
-                    
-                veri_objesi = json.loads(ham_veri)
-                cozulen_metin = evrensel_json_metin_ayristirici(veri_objesi)
-                
-                if cozulen_metin:
-                    return cozulen_metin
-        except:
-            continue
+    try:
+        # 1. ADIM: Sayfa kaynak kodunu indir
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            html_icerik = response.read().decode("utf-8", errors="ignore")
+        
+        # 2. ADIM: Altyazı veri bloğunu regex ile yakala
+        match = re.search(r'"captionTracks":\s*(\[.*?\])', html_icerik)
+        if not match:
+            return None
             
+        tracks = json.loads(match.group(1))
+        if not tracks:
+            return None
+            
+        # Öncelikli dil taraması (Önce Türkçe, yoksa İngilizce, en son ilk bulduğu dil)
+        secilen_track = tracks[0]
+        for t in tracks:
+            if "tr" in t.get("languageCode", "").lower():
+                secilen_track = t
+                break
+        else:
+            for t in tracks:
+                if "en" in t.get("languageCode", "").lower():
+                    secilen_track = t
+                    break
+                    
+        base_url = secilen_track.get("baseUrl")
+        if not base_url:
+            return None
+            
+        # 3. ADIM: Resmi XML altyazı dosyasını indir ve parse et
+        req_xml = urllib.request.Request(base_url, headers=headers)
+        with urllib.request.urlopen(req_xml, timeout=10) as xml_res:
+            xml_data = xml_res.read().decode("utf-8", errors="ignore")
+            
+        # Basit Regex Parser ile XML text etiketlerini ayıkla (XML kütüphane bağımlılığı olmaması için)
+        metin_parcalari = re.findall(r'<text[^>]*>([^<]*)</text>', xml_data)
+        if metinParcalari := [html.unescape(p.strip()) for p in metin_parcalari if p.strip()]:
+            return " ".join(metinParcalari)
+            
+    except:
+        pass
     return None
 
 # --- SIDEBAR ---
@@ -201,13 +181,13 @@ else:
 
 # --- ANA SAYFA PANELİ ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
-st.write("Evrensel Veri Şeması Çözücü Altyapısı ile Kesintisiz URL Otomasyonu")
+st.write("YouTube Yerleşik Kod Çözücü Altyapısı ile Sıfır Bağımlılıklı URL Otomasyonu")
 st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
 st.subheader("📺 1. Mod: YouTube Video Analizi")
-video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com/watch?v=...", key="main_yt_box")
+video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 
 if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
     if not video_linki.strip():
@@ -215,8 +195,8 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
     else:
         v_id = youtube_id_bul_kesin(video_linki)
         
-        with st.spinner("🔄 Gelişmiş veri şemaları çözümleniyor... Güvenli sunucu ağ geçidi üzerinden transkript indiriliyor..."):
-            gelen_veri = sunucu_tarafli_kesintisiz_transkript_motoru(v_id)
+        with st.spinner("🔄 YouTube veri katmanından yerleşik altyazı izleri ayıklanıyor..."):
+            gelen_veri = youtube_resmi_kodundan_altyazi_sorgula(v_id)
             
         if gelen_veri:
             ham_maddeler = yerel_mantik_ozetleyici(gelen_veri, madde_sayisi=madde_limiti)
@@ -230,10 +210,10 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
             }
             gecmis_ekle(veri_paketi)
             st.session_state["aktif_ozet"] = veri_paketi
-            st.success("🎉 Video verileri başarıyla çözümlendi!")
+            st.success("🎉 Video verileri YouTube yerleşik katmanından başarıyla çözümlendi!")
             st.rerun()
         else:
-            st.error("❌ Bu videonun transkript katmanına otomatik olarak erişilemedi. Lütfen videonun herkese açık olduğundan ve altyazı seçeneğinin aktif olduğundan emin olun.")
+            st.error("❌ Bu videonun transkript katmanına doğrudan erişilemedi. Lütfen videonun herkese açık olduğundan ve altyazı seçeneğinin aktif olduğundan emin olun.")
 
 st.divider()
 
@@ -246,3 +226,20 @@ if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
         ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti)
         ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler]
         simdi = datetime.now()
+        veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": girilen_metin, "ozet": ozet_maddeleri}
+        gecmis_ekle(veri_paketi)
+        st.session_state["aktif_ozet"] = veri_paketi
+        st.rerun()
+
+# --- SONUÇ ALANI ---
+if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not None:
+    st.divider()
+    st.info("📂 **Analiz Sonucu**")
+    g = st.session_state["aktif_ozet"]
+    if isinstance(g, dict) and "ozet" in g:
+        for m in g.get('ozet', []):
+            st.write(m)
+        st.divider()
+        t_fmt = f"--- AI ANALIZ RAPORU ---\nTarih: {g.get('tarih','')}\n\nKritik Maddeler:\n"
+        for m in g.get('ozet', []): t_fmt += f"{m}\n"
+        st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
