@@ -2,9 +2,8 @@ import streamlit as st
 import json
 import os
 import re
-import urllib.request
-import xml.etree.ElementTree as ET
 from datetime import datetime
+import streamlit.components.v1 as components
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -112,49 +111,6 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
                 sonuc.append(ham_cumle)
     return sonuc
 
-def sunucu_tabanli_altyazi_cek(video_id):
-    """
-    Tarayıcı JavaScript motoruna bağımlı kalmaksızın, doğrudan Python sunucu katmanından 
-    YouTube altyazı izlerini (timedtext) taklitçi ağ istekleriyle çeker.
-    """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache"
-    }
-    try:
-        # Doğrudan transkript sağlayıcı küresel bir ayna (mirror) uç noktası kullanılır
-        url = f"https://v0.lat{video_id}"
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as response:
-            res_data = response.read().decode("utf-8")
-            veri = json.loads(res_data)
-            
-            if isinstance(veri, list):
-                parcalar = [item.get("text", "") for item in veri if item.get("text")]
-                if parcalar:
-                    return " ".join(parcalar)
-            elif isinstance(veri, dict) and "transcript" in veri:
-                return veri["transcript"]
-    except:
-        pass
-
-    # Yedek Plan: YouTube timedtext ham API simülasyonu
-    try:
-        yedek_url = f"https://youtube.com{video_id}&lang=tr&fmt=srv1"
-        req_y = urllib.request.Request(yedek_url, headers=headers)
-        with urllib.request.urlopen(req_y, timeout=8) as response_y:
-            xml_data = response_y.read().decode("utf-8")
-            if xml_data.strip() and "<text" in xml_data:
-                root = ET.fromstring(xml_data)
-                parcalar = [t.text for t in root.findall(".//text") if t.text]
-                if parcalar:
-                    return " ".join(parcalar)
-    except:
-        pass
-    return None
-
 # --- SIDEBAR ---
 st.sidebar.title("📜 Analiz Geçmişiniz")
 veri_havuzu = veritabani_yukle()
@@ -173,34 +129,82 @@ st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
+# Tarayıcıdan gelen transkript verisini yakala ve kontrol et
+query_params = st.query_params
+if "transcript_data" in query_params:
+    gelen_transkript = query_params["transcript_data"]
+    if len(gelen_transkript.strip()) > 10:
+        st.session_state["gecici_transkript"] = gelen_transkript
+    # URL kirliliğini önlemek için parametreyi temizle
+    st.query_params.clear()
+
 st.subheader("📺 1. Mod: YouTube Video Analizi")
 video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 
-if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
-    if not video_linki.strip():
-        st.warning("Lütfen bir YouTube linki girin.")
-    else:
-        v_id = youtube_id_bul_kesin(video_linki)
-        
-        with st.spinner("🔄 JavaScript bağımlılıkları atlanıyor... Sunucu veri hattından doğrudan transkript çözümleniyor..."):
-            gelen_veri = sunucu_tabanli_altyazi_cek(v_id)
+if video_linki.strip():
+    v_id = youtube_id_bul_kesin(video_linki)
+    
+    # 🔒 REAKTİF TARAYICI PIPELINE (QUERY PARAMETERS BRIDGE)
+    js_bridge_html = f"""
+    <div id="status-box" style="font-family:sans-serif; background-color:#e8f5e9; padding:12px; border-radius:8px; color:#2e7d32; font-size:14px; font-weight:bold;">
+        🔄 Yerel ağ geçidi aktif. Video veri katmanı çözülüyor...
+    </div>
+    <script>
+    async function tarayiciUzerindenCek() {{
+        const vId = "{v_id}";
+        const statusBox = document.getElementById("status-box");
+        try {{
+            // Doğrudan kullanıcının IP'si üzerinden engelsiz resmi manifesto çağrısı
+            const targetUrl = 'https://v0.lat' + vId;
+            const response = await fetch(targetUrl);
+            const data = await response.json();
             
-        if gelen_veri:
-            ham_maddeler = yerel_mantik_ozetleyici(gelen_veri, madde_sayisi=madde_limiti)
-            ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
-            simdi = datetime.now()
-            veri_paketi = {
-                "tarih": simdi.strftime("%d.%m.%Y"), 
-                "saat": simdi.strftime("%H:%M:%S"), 
-                "metin": gelen_veri, 
-                "ozet": ozet_maddeleri
-            }
-            gecmis_ekle(veri_paketi)
-            st.session_state["aktif_ozet"] = veri_paketi
-            st.success("🎉 Video verileri başarıyla çözümlendi!")
-            st.rerun()
-        else:
-            st.error("❌ Bu videonun transkript katmanına erişilemedi. Lütfen videonun herkese açık olduğundan veya altyazı (otomatik veya manuel) içerdiğinden emin olun.")
+            let tamMetin = "";
+            if (Array.isArray(data)) {{
+                tamMetin = data.map(item => item.text || "").join(" ");
+            }} else if (data && data.transcript) {{
+                tamMetin = data.transcript;
+            }}
+            
+            if (tamMetin.trim().length > 20) {{
+                statusBox.innerHTML = "✅ Veri çözüldü! Sayfa yenileniyor, lütfen bekleyin...";
+                
+                // Güvenli Köprü: Veriyi Streamlit URL parametrelerine basarak sunucuya fırlatır ve sayfayı tetikler
+                const yeniUrl = window.parent.location.origin + window.parent.location.pathname + "?transcript_data=" + encodeURIComponent(tamMetin.trim());
+                window.parent.location.href = yeniUrl;
+            }} else {{
+                statusBox.innerHTML = "💡 Doğrudan transkript bulunamadı. Lütfen metni aşağıdaki alana kopyalayarak analizi tamamlayın.";
+                statusBox.style.backgroundColor = "#fff3e0";
+                statusBox.style.color = "#e65100";
+            }}
+        }} catch(e) {{
+            statusBox.innerHTML = "💡 Ağ geçidi yanıt vermedi. Lütfen metni aşağıdaki alana kopyalayarak analizi tamamlayın.";
+            statusBox.style.backgroundColor = "#fff3e0";
+            statusBox.style.color = "#e65100";
+        }}
+    }}
+    setTimeout(tarayiciUzerindenCek, 800);
+    </script>
+    """
+    components.html(js_bridge_html, height=65)
+
+# Eğer tarayıcı köprüsü veriyi başarıyla getirdiyse işleme al
+if "gecici_transkript" in st.session_state and st.session_state["gecici_transkript"]:
+    ham_veri = st.session_state["gecici_transkript"]
+    st.session_state["gecici_transkript"] = None  # Döngü önlemek için temizle
+    
+    ham_maddeler = yerel_mantik_ozetleyici(ham_veri, madde_sayisi=madde_limiti)
+    ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
+    simdi = datetime.now()
+    veri_paketi = {
+        "tarih": simdi.strftime("%d.%m.%Y"), 
+        "saat": simdi.strftime("%H:%M:%S"), 
+        "metin": ham_veri, 
+        "ozet": ozet_maddeleri
+    }
+    gecmis_ekle(veri_paketi)
+    st.session_state["aktif_ozet"] = veri_paketi
+    st.success("🎉 Video verileri başarıyla çözümlendi!")
 
 st.divider()
 
