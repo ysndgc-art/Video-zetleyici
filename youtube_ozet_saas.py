@@ -3,7 +3,8 @@ import json
 import os
 import re
 from datetime import datetime
-import streamlit.components.v1 as components
+import urllib.request
+import xml.etree.ElementTree as ET
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -113,10 +114,10 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
 
 def video_analiz_proses_et(metin, limit):
     if not metin or len(metin.strip()) < 10:
-        st.error("❌ Tarayıcı köprüsü video metnini çekemedi. Video gizli olabilir veya altyazısı bulunmuyor olabilir.")
+        st.error("❌ Video metni çözümlenemedi. Metin çok kısa veya geçersiz.")
         return
         
-    st.success("🎉 Kullanıcı tarayıcısı üzerinden altyazı başarıyla söküldü! Maddeler oluşturuluyor...")
+    st.success("🎉 Metin başarıyla yapılandırıldı! Kritik maddeler çıkarılıyor...")
     ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=limit)
     ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
     simdi = datetime.now()
@@ -145,88 +146,46 @@ else:
 
 # --- ANA SAYFA PANELİ ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
-st.write("Gelişmiş İstatistik Paneli ve Sıfır API Key Bağımlılığı")
+st.write("Gelişmiş İstatistik Paneli ve Kesintisiz Çözüm Altyapısı")
 st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
 # MODLAR
-st.subheader("📺 1. Mod: YouTube Video Analizi")
-video_linki = st.text_input("YouTube Linki veya Kodu:", value="", placeholder="https://youtube.com...", key="main_yt_box")
+st.subheader("📺 1. Mod: YouTube Video & Altyazı Analizi")
+st.info("💡 YouTube bulut engellemelerinden etkilenmemek için videonun altyazı/transkript metnini aşağıdaki kutuya yapıştırarak anında yapay zeka analiz raporu oluşturabilirsiniz.")
 
+video_metni_girdisi = st.text_area("Videoya Ait Altyazı veya Transkript Metnini Buraya Yapıştırın:", height=150, placeholder="Video transkriptini veya konuşma dökümünü buraya ekleyin...", key="yt_transcript_box")
 if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
-    if not video_linki.strip():
-        st.warning("Lütfen bir YouTube linki girin.")
+    if not video_metni_girdisi.strip():
+        st.warning("Lütfen analiz edilecek video metnini girin.")
     else:
-        v_id = youtube_id_bul_kesin(video_linki)
-        st.info("🔄 Tarayıcı tabanlı güvenli tünel açılıyor. Lütfen bekleyin...")
-        
-        # Kullanıcının tarayıcısında (Client-side) çalışıp veriyi sunucuya döndüren JavaScript enjektörü
-        js_bridge = f"""
-        <script>
-        async function altyaziCek() {{
-            try {{
-                const res = await fetch('https://google.com{v_id}&lang=tr');
-                const text = await res.text();
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(text, "text/xml");
-                const lines = xmlDoc.getElementsByTagName("text");
-                let tamMetin = "";
-                for (let i = 0; i < lines.length; i++) {{
-                    tamMetin += lines[i].textContent + " ";
-                }}
-                if(!tamMetin.strip()) {{
-                    const res_en = await fetch('https://google.com{v_id}&lang=en');
-                    const text_en = await res_en.text();
-                    const xmlDoc_en = parser.parseFromString(text_en, "text/xml");
-                    const lines_en = xmlDoc_en.getElementsByTagName("text");
-                    for (let i = 0; i < lines_en.length; i++) {{
-                        tamMetin += lines_en[i].textContent + " ";
-                    }}
-                }}
-                window.parent.postMessage({{type: 'streamlit:setComponentValue', value: tamMetin}}, '*');
-            }} catch(e) {{
-                window.parent.postMessage({{type: 'streamlit:setComponentValue', value: 'HATA'}}, '*');
-            }}
-        }}
-        altyaziCek();
-        </script>
-        """
-        # Gizli köprüyü çalıştır ve tarayıcıdan dönen veriyi yakala
-        gelen_veri = components.html(js_bridge, height=0, width=0)
-        
-        # Tarayıcıdan metin akışı geldiyse analizi başlat
-        if 'last_v_id' not in st.session_state or st.session_state['last_v_id'] != v_id:
-            st.session_state['last_v_id'] = v_id
-            # Test amaçlı simüle edilen altyazı akışını doğrudan tetikliyoruz
-            # Gerçek veri akışı Streamlit state mekanizması ile senkronize çalışır
-        
-        # Ağ engellerini aşmak için bağımsız kazıma motoru tetikleyicisi
-        url_direkt = f"https://google.com{v_id}&lang=tr"
-        try:
-            import urllib.request
-            import xml.etree.ElementTree as ET
-            req = urllib.request.Request(url_direkt, headers={{'User-Agent': 'Mozilla/5.0'}})
-            with urllib.request.urlopen(req, timeout=5) as response:
-                xml_raw = response.read().decode('utf-8')
-            if xml_raw.strip() and "<text" in xml_raw:
-                root = ET.fromstring(xml_raw)
-                parcalar = [t.text for t in root.findall('.//text') if t.text]
-                video_analiz_proses_et(" ".join(parcalar), madde_limiti)
-            else:
-                # İngilizce dene
-                req_en = urllib.request.Request(f"https://google.com{v_id}&lang=en", headers={{'User-Agent': 'Mozilla/5.0'}})
-                with urllib.request.urlopen(req_en, timeout=5) as response_en:
-                    xml_raw_en = response_en.read().decode('utf-8')
-                if xml_raw_en.strip() and "<text" in xml_raw_en:
-                    root_en = ET.fromstring(xml_raw_en)
-                    parcalar_en = [t.text for t in root_en.findall('.//text') if t.text]
-                    video_analiz_proses_et(" ".join(parcalar_en), madde_limiti)
-                else:
-                    st.error("❌ Bu videoda Türkçe veya İngilizce altyazı (CC) havuzu bulunamadı.")
-        except Exception as e:
-            st.error("❌ Video işlenirken ağ hatası oluştu. Lütfen metin analiz modunu deneyin.")
+        video_analiz_proses_et(video_metni_girdisi, madde_limiti)
 
 st.divider()
 
 st.subheader("📝 2. Mod: Doğrudan Metin Analizi")
+girilen_metin = st.text_area("Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:", height=150, key="main_text_box")
+if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
+    if not girilen_metin.strip():
+        st.warning("Lütfen metin girin.")
+    else:
+        ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti)
+        ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler]
+        simdi = datetime.now()
+        veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": girilen_metin, "ozet": ozet_maddeleri}
+        gecmis_ekle(veri_paketi)
+        st.session_state["aktif_ozet"] = veri_paketi
+        st.rerun()
+
+# --- SONUÇ ALANI ---
+if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not None:
+    st.divider()
+    st.info("📂 **Analiz Sonucu**")
+    g = st.session_state["aktif_ozet"]
+    if isinstance(g, dict) and "ozet" in g:
+        for m in g.get('ozet', []):
+            st.write(m)
+        st.divider()
+        t_fmt = rapor_formatlarini_uret(g.get('tarih',''), g.get('saat',''), g.get('ozet', []))
+        st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
