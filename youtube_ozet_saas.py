@@ -2,9 +2,12 @@ import streamlit as st
 import json
 import os
 import re
+import urllib.request
 from datetime import datetime
-# Resmi ve kararlı transkript motorunu dahil ediyoruz
-from youtube_transcript_api import YouTubeTranscriptApi
+# Yeni Nesil Yapay Zeka Deşifre Motorları
+import yt_dlp
+import speech_recognition as sr
+from pydub import AudioSegment
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -114,7 +117,7 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
 
 def video_analiz_proses_et(metin, limit):
     if not isinstance(metin, str) or len(metin.strip()) < 15:
-        st.error("❌ Belirtilen videoya ait transkript akışı alınamadı. Başka bir video linki deneyebilirsiniz.")
+        st.error("❌ Belirtilen videodan metin dökümü çıkarılamadı. Lütfen konuşma içeren başka bir video deneyin.")
         return
         
     ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=limit)
@@ -124,32 +127,53 @@ def video_analiz_proses_et(metin, limit):
     gecmis_ekle(veri_paketi)
     st.session_state["aktif_ozet"] = veri_paketi
 
-def resmi_kutuphane_ile_transkript_cek(video_id):
+def yerel_ai_ile_video_desifre_et(video_url):
     """
-    YouTubeTranscriptApi kullanarak video altyazısını güvenli kanal üzerinden çeker.
-    Öncelikle Türkçe, yoksa İngilizce, o da yoksa mevcut ilk dili almaya çalışır.
+    YouTube IP engellerini bypass etmek için videonun sadece ses kanalını çeker
+    ve yerel Speech-to-Text motoru ile yapay zeka dökümünü oluşturur.
     """
+    ses_dosyasi_adi = "gevici_audio"
+    wav_dosyasi_adi = "gevici_audio.wav"
+    
+    # 1. Adım: yt-dlp ile videonun sadece sesini en hafif formatta indir
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': ses_dosyasi_adi,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'wav',
+            'preferredquality': '192',
+        }],
+        'quiet': True,
+        'no_warnings': True
+    }
+    
     try:
-        # Video listesini al
-        altyazi_listesi = YouTubeTranscriptApi.list_transcripts(video_id)
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([video_url])
+            
+        # Dosya uzantısını kontrol et (bazen otomatik eklenir)
+        if not os.path.exists(wav_dosyasi_adi) and os.path.exists(ses_dosyasi_adi + ".wav"):
+            wav_dosyasi_adi = ses_dosyasi_adi + ".wav"
+            
+        # 2. Adım: Ses dosyasını yapay zeka deşifre motoruna yükle
+        taniyici = sr.Recognizer()
+        with sr.AudioFile(wav_dosyasi_adi) as source:
+            # Arka plan gürültülerini filtrele
+            taniyici.adjust_for_ambient_noise(source)
+            ses_verisi = taniyici.record(source)
+            
+        # Google Speech Tanıma Altyapısı ile Türkçe (veya otomatik) Deşifre Et
+        metin_dokumu = taniyici.recognize_google(ses_verisi, language="tr-TR")
         
-        # 1. Tercih: Doğrudan Türkçe altyazı ara
-        try:
-            transkript = altyazi_listesi.find_transcript(['tr'])
-        except:
-            # 2. Tercih: Türkçe yoksa İngilizce ara
-            try:
-                transkript = altyazi_listesi.find_transcript(['en'])
-            except:
-                # 3. Tercih: Hiçbiri yoksa otomatik oluşturulmuş veya ilk bulduğu dili al
-                transkript = altyazi_listesi.find_id_transcript(video_id)
-                
-        veri = transkript.fetch()
-        # Parçaları birleştirip düz metne dönüştür
-        tam_metin = " ".join([parca["text"] for parca in veri])
-        return tam_metin
+        # Temizlik Adımı: Geçici ses dosyalarını sunucudan sil
+        if os.path.exists(wav_dosyasi_adi): os.remove(wav_dosyasi_adi)
+        if os.path.exists(ses_dosyasi_adi): os.remove(ses_dosyasi_adi)
+            
+        return metin_dokumu
     except Exception as e:
-        # Loglama veya hata takibi için hata mesajı konsola yazdırılabilir
+        # Geçici temizlik
+        if os.path.exists(wav_dosyasi_adi): os.remove(wav_dosyasi_adi)
         return None
 
 def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
@@ -178,23 +202,21 @@ st.divider()
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
 st.subheader("📺 1. Mod: YouTube Video Analizi")
-video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
+video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://www.youtube.com/watch?v=...", key="main_yt_box")
 
 if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
     if not video_linki.strip():
         st.warning("Lütfen bir YouTube linki girin.")
     else:
-        v_id = youtube_id_bul_kesin(video_linki)
-        
-        with st.spinner("🔄 Kurumsal entegrasyon kanalı üzerinden video dökümü çözümleniyor..."):
-            gelen_veri = resmi_kutuphane_ile_transkript_cek(v_id)
+        with st.spinner("⚡ Dış API engelleri aşılıyor... Yapay zeka ses analiz motoru doğrudan video dalgalarını deşifre ediyor (Lütfen bekleyin)..."):
+            gelen_veri = yerel_ai_ile_video_desifre_et(video_linki)
             
         if gelen_veri:
             video_analiz_proses_et(gelen_veri, madde_limiti)
-            st.success("🎉 Video verileri başarıyla çözümlendi! Kritik maddeler aşağıda listelenmiştir.")
+            st.success("🎉 Yapay zeka ses dalgalarını başarıyla metne dönüştürdü ve analiz etti!")
             st.rerun()
         else:
-            st.error("❌ Bu videonun transkript verilerine erişilemedi. Lütfen videonun gizli/özel olmadığından ve altyazı seçeneğinin aktif olduğundan emin olun.")
+            st.error("❌ Bulut sunucu limiti veya video erişim hatası. Lütfen video bağlantısının doğru ve herkese açık olduğunu teyit edin.")
 
 st.divider()
 
