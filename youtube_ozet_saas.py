@@ -2,8 +2,9 @@ import streamlit as st
 import json
 import os
 import re
-import urllib.request
 from datetime import datetime
+# Resmi ve kararlı transkript motorunu dahil ediyoruz
+from youtube_transcript_api import YouTubeTranscriptApi
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -123,44 +124,33 @@ def video_analiz_proses_et(metin, limit):
     gecmis_ekle(veri_paketi)
     st.session_state["aktif_ozet"] = veri_paketi
 
-def proxy_uzerinden_transkript_cek(video_id):
+def resmi_kutuphane_ile_transkript_cek(video_id):
     """
-    Bulut IP engellerini aşmak için küresel istek dağıtıcı proxy havuzlarını
-    senkron Python mimarisiyle doğrudan sorgular.
+    YouTubeTranscriptApi kullanarak video altyazısını güvenli kanal üzerinden çeker.
+    Öncelikle Türkçe, yoksa İngilizce, o da yoksa mevcut ilk dili almaya çalışır.
     """
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    
-    # 1. Aşama: Küresel proxy havuzu üzerinden bağımsız döküm motorunu sorgula
     try:
-        hedef_url = f"https://youtubetranscript.com{video_id}"
-        proxy_api = f"https://allorigins.win{urllib.parse.quote(hedef_url)}"
+        # Video listesini al
+        altyazi_listesi = YouTubeTranscriptApi.list_transcripts(video_id)
         
-        req = urllib.request.Request(proxy_api, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as response:
-            ham_json = json.loads(response.read().decode("utf-8"))
-            xml_icerik = ham_json.get("contents", "")
-            
-            if xml_icerik and "<text" in xml_icerik:
-                import xml.etree.ElementTree as ET
-                root = ET.fromstring(xml_icerik)
-                parcalar = [t.text for t in root.findall(".//text") if t.text]
-                if parcalar:
-                    return " ".join(parcalar)
-    except:
-        pass
-
-    # 2. Aşama: Alternatif CDN döküm kanalı (Yedek hat)
-    try:
-        yedek_url = f"https://bhawanigarg.com{video_id}"
-        req_y = urllib.request.Request(yedek_url, headers=headers)
-        with urllib.request.urlopen(req_y, timeout=8) as response_y:
-            veri_y = json.loads(response_y.read().decode("utf-8"))
-            if veri_y.get("success") and veri_y.get("transcript"):
-                return veri_y.get("transcript")
-    except:
-        pass
-        
-    return None
+        # 1. Tercih: Doğrudan Türkçe altyazı ara
+        try:
+            transkript = altyazi_listesi.find_transcript(['tr'])
+        except:
+            # 2. Tercih: Türkçe yoksa İngilizce ara
+            try:
+                transkript = altyazi_listesi.find_transcript(['en'])
+            except:
+                # 3. Tercih: Hiçbiri yoksa otomatik oluşturulmuş veya ilk bulduğu dili al
+                transkript = altyazi_listesi.find_id_transcript(video_id)
+                
+        veri = transkript.fetch()
+        # Parçaları birleştirip düz metne dönüştür
+        tam_metin = " ".join([parca["text"] for parca in veri])
+        return tam_metin
+    except Exception as e:
+        # Loglama veya hata takibi için hata mesajı konsola yazdırılabilir
+        return None
 
 def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
     txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {tarih} - {saat}\n"
@@ -188,7 +178,7 @@ st.divider()
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
 st.subheader("📺 1. Mod: YouTube Video Analizi")
-video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://www.youtube.com/watch?v=...", key="main_yt_box")
+video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 
 if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
     if not video_linki.strip():
@@ -196,16 +186,15 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
     else:
         v_id = youtube_id_bul_kesin(video_linki)
         
-        # Streamlit spinner ile kullanıcıya durum bildirimi verilir, donma algısı kırılır
-        with st.spinner("🔄 Güvenli tünel API kanalları üzerinden video dökümü analiz ediliyor, lütfen bekleyin..."):
-            gelen_veri = proxy_uzerinden_transkript_cek(v_id)
+        with st.spinner("🔄 Kurumsal entegrasyon kanalı üzerinden video dökümü çözümleniyor..."):
+            gelen_veri = resmi_kutuphane_ile_transkript_cek(v_id)
             
         if gelen_veri:
             video_analiz_proses_et(gelen_veri, madde_limiti)
             st.success("🎉 Video verileri başarıyla çözümlendi! Kritik maddeler aşağıda listelenmiştir.")
             st.rerun()
         else:
-            st.error("❌ Bu videonun transkript verilerine doğrudan erişilemedi. Lütfen videonen herkese açık olduğundan veya altyazı barındırdığından emin olun.")
+            st.error("❌ Bu videonun transkript verilerine erişilemedi. Lütfen videonun gizli/özel olmadığından ve altyazı seçeneğinin aktif olduğundan emin olun.")
 
 st.divider()
 
