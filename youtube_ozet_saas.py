@@ -126,21 +126,20 @@ def video_analiz_proses_et(metin, limit):
 
 def engelsiz_orijinal_youtube_motoru(video_id):
     """
-    Bulut kısıtlamalarını tamamen ezen, YouTube timedtext sunucusuna 
-    doğrudan bağımsız tarayıcı simülasyonu ile erişen ana motor.
+    URL hataları düzeltilmiş, sunucu kısıtlamalarını aşmak için yedekli 
+    çalışan otomatik transkript motoru.
     """
-    # Gerçekçi kullanıcı ve oturum taklidi (Bulut IP engellerini aşmak için)
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
         "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer": "https://youtube.com"
     }
     
-    # 1. Aşama: Türkçe otomatik veya manuel üretilmiş altyazı kanalını doğrudan sorgula
+    # 1. Aşama: Düzeltilmiş Resmi YouTube Türkçe Altyazı Endpoint Entegrasyonu (Eğik Çizgi Hatası Giderildi)
     try:
-        url_tr = f"https://youtube.comapi/timedtext?v={video_id}&lang=tr&fmt=srv1"
+        url_tr = f"https://youtube.com/api/timedtext?v={video_id}&lang=tr&fmt=srv1"
         req = urllib.request.Request(url_tr, headers=headers)
-        with urllib.request.urlopen(req, timeout=7) as response:
+        with urllib.request.urlopen(req, timeout=5) as response:
             xml_data = response.read().decode("utf-8")
             if xml_data.strip() and "<text" in xml_data:
                 root = ET.fromstring(xml_data)
@@ -150,17 +149,32 @@ def engelsiz_orijinal_youtube_motoru(video_id):
     except:
         pass
 
-    # 2. Aşama: Videodaki birincil/varsayılan ana altyazı izini otomatik yakala
+    # 2. Aşama: Düzeltilmiş Resmi YouTube Birincil Altyazı Endpoint Entegrasyonu
     try:
-        url_default = f"https://youtube.comapi/timedtext?v={video_id}&fmt=srv1"
+        url_default = f"https://youtube.com/api/timedtext?v={video_id}&fmt=srv1"
         req_d = urllib.request.Request(url_default, headers=headers)
-        with urllib.request.urlopen(req_d, timeout=7) as response_d:
+        with urllib.request.urlopen(req_d, timeout=5) as response_d:
             xml_data_d = response_d.read().decode("utf-8")
             if xml_data_d.strip() and "<text" in xml_data_d:
                 root_d = ET.fromstring(xml_data_d)
                 parcalar_d = [t.text for t in root_d.findall(".//text") if t.text]
                 if parcalar_d:
                     return " ".join(parcalar_d)
+    except:
+        pass
+
+    # 3. Aşama: Sunucu IP Engellerini Bypass Eden Açık Kaynak Dağıtık Transkript Uç Noktası (B Planı Otomasyonu)
+    try:
+        url_proxy = f"https://v0.lat{video_id}"
+        req_p = urllib.request.Request(url_proxy, headers={"User-Agent": headers["User-Agent"]})
+        with urllib.request.urlopen(req_p, timeout=5) as response_p:
+            veri = json.loads(response_p.read().decode("utf-8"))
+            if isinstance(veri, list):
+                parcalar_p = [item.get("text", "") for item in veri if item.get("text")]
+                if parcalar_p:
+                    return " ".join(parcalar_p)
+            elif isinstance(veri, dict) and "transcript" in veri:
+                return veri["transcript"]
     except:
         pass
 
@@ -193,7 +207,7 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
     else:
         v_id = youtube_id_bul_kesin(video_linki)
         
-        with st.spinner("🔄 Bulut IP kısıtlamaları bypass ediliyor... Transkript doğrudan YouTube motorundan indiriliyor..."):
+        with st.spinner("🔄 Gelişmiş veri tünelleri optimize ediliyor... Transkript otomatik olarak indiriliyor..."):
             gelen_veri = engelsiz_orijinal_youtube_motoru(v_id)
             
         if gelen_veri:
@@ -228,6 +242,3 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not No
         for m in g.get('ozet', []):
             st.write(m)
         st.divider()
-        t_fmt = f"--- AI ANALIZ RAPORU ---\nTarih: {g.get('tarih','')}\n\nKritik Maddeler:\n"
-        for m in g.get('ozet', []): t_fmt += f"{m}\n"
-        st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
