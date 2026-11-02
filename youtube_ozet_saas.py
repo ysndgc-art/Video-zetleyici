@@ -259,6 +259,4 @@ st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
-# Sıfır Girinti İçin Optimize Edilmiş Doğrusal Sekme Sistemi
-secilen_sekme = st.radio("Lütfen Analiz Modunu Seçin:", ["📺 YouTube Videosu", "📝 Uzun Metin"], horizontal=True)
-
+# SABİT YOUTUBE LINK ALANI (Her Zaman Görünür)
