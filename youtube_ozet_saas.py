@@ -2,8 +2,10 @@ import streamlit as st
 import json
 import os
 import re
+import urllib.request
 from datetime import datetime
-import streamlit.components.v1 as components
+# Resmi ve en kararlı çalışan YouTube Transkript Kütüphanesi
+from youtube_transcript_api import YouTubeTranscriptApi
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -111,6 +113,63 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
                 sonuc.append(ham_cumle)
     return sonuc
 
+def video_analiz_proses_et(metin, limit):
+    if not isinstance(metin, str) or len(metin.strip()) < 15:
+        st.error("❌ Belirtilen videoya ait transkript akışı boş veya çok kısa.")
+        return
+        
+    ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=limit)
+    ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
+    simdi = datetime.now()
+    veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri}
+    gecmis_ekle(veri_paketi)
+    st.session_state["aktif_ozet"] = veri_paketi
+
+def otomatik_url_transkript_motoru(video_id):
+    """
+    Sadece URL kullanarak 3 kademeli (Yerel Modül -> CDN Ayna 1 -> CDN Ayna 2)
+    kesintisiz otomatik veri çekme hattı.
+    """
+    # 1. KADEME: Resmi Python Yapısı (En hızlı ve güvenli yol)
+    try:
+        altyazi_listesi = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
+        metin = " ".join([parca['text'] for parca in altyazi_listesi])
+        if len(metin.strip()) > 50:
+            return metin
+    except Exception as e:
+        pass
+
+    # Sunucu başlık tanımlamaları
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        "Accept": "application/json"
+    }
+
+    # 2. KADEME: Yedek Küresel Dağıtık CDN Hattı
+    try:
+        url_yedek1 = f"https://v0.lat{video_id}"
+        req1 = urllib.request.Request(url_yedek1, headers=headers)
+        with urllib.request.urlopen(req1, timeout=6) as response1:
+            veri = json.loads(response1.read().decode("utf-8"))
+            if isinstance(veri, list):
+                metin = " ".join([item.get("text", "") for item in veri if item.get("text")])
+                if len(metin.strip()) > 50: return metin
+    except:
+        pass
+
+    # 3. KADEME: Son Çare Küresel API Ağ Geçidi
+    try:
+        url_yedek2 = f"https://yt-api.com{video_id}"
+        req2 = urllib.request.Request(url_yedek2, headers=headers)
+        with urllib.request.urlopen(req2, timeout=6) as response2:
+            veri = json.loads(response2.read().decode("utf-8"))
+            if isinstance(veri, dict) and "transcript" in veri:
+                return veri["transcript"]
+    except:
+        pass
+
+    return None
+
 # --- SIDEBAR ---
 st.sidebar.title("📜 Analiz Geçmişiniz")
 veri_havuzu = veritabani_yukle()
@@ -132,63 +191,34 @@ madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, m
 st.subheader("📺 1. Mod: YouTube Video Analizi")
 video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 
-if video_linki.strip():
-    v_id = youtube_id_bul_kesin(video_linki)
-    
-    # 🔒 ARKA PLAN BAĞLANTI DENEMESİ VE OTOMATİK DÜŞÜŞ SİSTEMİ
-    js_bridge_html = f"""
-    <div id="status-box" style="font-family:sans-serif; background-color:#fff3e0; padding:12px; border-radius:8px; color:#e65100; font-size:14px;">
-        💡 Bulut API korumaları nedeniyle otomatik aktarım kısıtlandı. Kesintisiz B Planı Asistanı aktif hale getirildi.
-    </div>
-    <script>
-    async function otomatikDene() {{
-        try {{
-            const res = await fetch('https://v0.lat' + "{v_id}");
-            const data = await res.json();
-            let tamText = Array.isArray(data) ? data.map(i => i.text || "").join(" ") : (data.transcript || "");
-            if (tamText.length > 20) {{
-                var tx = window.parent.document.querySelector('textarea[aria-label="Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:"]');
-                if (tx) {{
-                    tx.value = tamText;
-                    tx.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                    document.getElementById("status-box").innerHTML = "🎉 Video verisi otomatik yakalandı! Aşağıdan analiz edebilirsiniz.";
-                    document.getElementById("status-box").style.backgroundColor = "#e8f5e9";
-                    document.getElementById("status-box").style.color = "#2e7d32";
-                }}
-            }}
-        }} catch(e) {{}}
-    }}
-    setTimeout(otomatikDene, 500);
-    </script>
-    """
-    components.html(js_bridge_html, height=50)
-    
-    # Şık ve Açıklayıcı Manuel Kılavuz Alanı
-    st.info("💡 **Otomatik veri çekme engellendiğinde 10 saniyede Manuel Çözüm:**")
-    st.markdown("""
-    1. Videoyu yeni sekmede açın, video altındaki **"... Dahası"** (More) butonuna tıklayıp **"Metni Göster"** (Show Transcript) deyin.
-    2. Sağda açılan paneldeki tüm konuşmaları `CTRL + A` ve `CTRL + C` ile kopyalayın.
-    3. Kopyaladığınız metni aşağıdaki **2. Mod** alanına yapıştırıp **Metni Analiz Et** butonuna tıklayın.
-    """)
+if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
+    if not video_linki.strip():
+        st.warning("Lütfen bir YouTube linki girin.")
+    else:
+        v_id = youtube_id_bul_kesin(video_linki)
+        
+        with st.spinner("🔄 Gelişmiş veri tünelleri optimize ediliyor... Transkript otomatik olarak indiriliyor..."):
+            gelen_veri = otomatik_url_transkript_motoru(v_id)
+            
+        if gelen_veri:
+            video_analiz_proses_et(gelen_veri, madde_limiti)
+            st.success("🎉 Video verileri başarıyla çözümlendi! Kritik maddeler aşağıda listelenmiştir.")
+            st.rerun()
+        else:
+            st.error("❌ Bu videonun transkript katmanına otomatik olarak erişilemedi. Lütfen videonun herkese açık olduğundan ve altyazı seçeneğinin aktif olduğundan emin olun.")
 
 st.divider()
 
-st.subheader("📝 2. Mod: Doğrudan Metin Analizi / Transkript Alanı")
+st.subheader("📝 2. Mod: Doğrudan Metin Analizi")
 girilen_metin = st.text_area("Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:", height=150, key="main_text_box")
-
 if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
     if not girilen_metin.strip():
-        st.warning("Lütfen analiz edilecek metni veya kopyaladığınız transkripti buraya yapıştırın.")
+        st.warning("Lütfen metin girin.")
     else:
-        ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti)
-        ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler]
+        ham_maddeler = yerel_mantik_ozetleyici(girilen_metin)
+        ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler[:madde_limiti]]
         simdi = datetime.now()
-        veri_paketi = {
-            "tarih": simdi.strftime("%d.%m.%Y"), 
-            "saat": simdi.strftime("%H:%M:%S"), 
-            "metin": girilen_metin, 
-            "ozet": ozet_maddeleri
-        }
+        veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": girilen_metin, "ozet": ozet_maddeleri}
         gecmis_ekle(veri_paketi)
         st.session_state["aktif_ozet"] = veri_paketi
         st.rerun()
@@ -202,7 +232,6 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not No
         for m in g.get('ozet', []):
             st.write(m)
         st.divider()
-        txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {g.get('tarih','')}\n\nKritik Maddeler:\n"
-        for m in g.get('ozet', []): 
-            txt_cikisi += f"{m}\n"
-        st.download_button(label="📥 TXT Olarak İndir", data=txt_cikisi.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
+        t_fmt = f"--- AI ANALIZ RAPORU ---\nTarih: {g.get('tarih','')}\n\nKritik Maddeler:\n"
+        for m in g.get('ozet', []): t_fmt += f"{m}\n"
+        st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
