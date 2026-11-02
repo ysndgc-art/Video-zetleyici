@@ -112,7 +112,8 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
     return sonuc
 
 def video_analiz_proses_et(metin, limit):
-    if not metin or len(metin.strip()) < 15:
+    # Tip ve değer güvenliği kontrolü
+    if not isinstance(metin, str) or len(metin.strip()) < 15:
         st.error("❌ Belirtilen videoya ait transkript akışı alınamadı. Başka bir video linki deneyebilirsiniz.")
         return
         
@@ -157,7 +158,6 @@ madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, m
 st.subheader("📺 1. Mod: YouTube Video Analizi")
 video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 
-# JAVASCRIPT KÖPRÜSÜ VE ASENKRON VERİ YÖNETİMİ
 if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn") and video_linki.strip():
     v_id = youtube_id_bul_kesin(video_linki)
     st.session_state["mevcut_video_id"] = v_id
@@ -165,7 +165,6 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn") and v
     st.info("🔄 Güvenli tarayıcı kanalı üzerinden video dökümü çözümleniyor, lütfen bekleyin...")
 
 if st.session_state["js_tetiklendi"]:
-    # Çakışmaları önlemek için tüm JS süslü parantezleri çiftlendi ({{ }}), sadece değişken tekli bırakıldı.
     js_bridge_code = f"""
     <script>
     async function istemciUzerindenAltyaziGetir() {{
@@ -196,7 +195,8 @@ if st.session_state["js_tetiklendi"]:
     """
     gelen_veri = components.html(js_bridge_code, height=0, width=0)
     
-    if gelen_veri:
+    # Gelen verinin string (metin) tipinde olduğundan emin oluyoruz
+    if gelen_veri and isinstance(gelen_veri, str):
         st.session_state["js_tetiklendi"] = False
         if gelen_veri == "ALTYAZI_YOK":
             st.error("❌ Bu videoya ait otomatik veya manuel oluşturulmuş bir altyazı dökümü bulunamadı.")
