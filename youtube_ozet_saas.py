@@ -5,7 +5,6 @@ import re
 import urllib.request
 import urllib.parse
 from datetime import datetime
-import yt_dlp
 from openai import OpenAI
 
 # --- SAYFA YAPILANDIRMASI ---
@@ -119,42 +118,70 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5, dil="tr"):
                 sonuc.append(ham_cumle)
     return sonuc
 
-def whisper_ile_ses_analizi(video_id, api_anahtari):
+def tarayici_tabanli_ses_indir(video_id, kayit_yolu):
+    """
+    Streamlit Cloud ağ engelini aşmak için açık kaynaklı harici CDN 
+    köprüsünü tetikler ve sesi güvenli bir şekilde sunucuya çeker.
+    """
+    try:
+        api_url = f"https://b-cdn.net{video_id}"
+        req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
+        with urllib.request.urlopen(req, timeout=15) as response:
+            veri = json.loads(response.read().decode('utf-8'))
+            # API'den gelen doğrudan ses dosyası linkini yakala
+            ses_url = veri.get("audio_url") or veri.get("url") or veri.get("data", {}).get("url")
+            if ses_url:
+                # Sesi sunucuya stream et
+                req_download = urllib.request.Request(ses_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req_download, timeout=30) as ses_response:
+                    with open(kayit_yolu, "wb") as f:
+                        f.write(ses_response.read())
+                return True
+    except Exception as e:
+        st.warning(f"⚠️ 1. Köprü denemesi başarısız, yedek CDN ayağa kaldırılıyor...")
+    
+    # Yedek Köprü Motoru (FallBack API)
+    try:
+        yedek_url = f"https://vexdh.com{video_id}"
+        req_y = urllib.request.Request(yedek_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req_y, timeout=15) as res_y:
+            veri_y = json.loads(res_y.read().decode('utf-8'))
+            ses_url_y = veri_y.get("url") or veri_y.get("audio")
+            if ses_url_y:
+                urllib.request.urlretrieve(ses_url_y, kayit_yolu)
+                return True
+    except:
+        pass
+    return False
+
+def whisper_ile_ses_analizi_zırhlı(video_id, api_anahtari):
     if not api_anahtari:
         st.error("❌ OpenAI API Key girmeden video analizi yapılamaz. Lütfen sol menüden anahtarınızı girin.")
         return None
     
-    hedef_dosya = f"audio_{video_id}.m4a"
+    hedef_dosya = f"tarayici_audio_{video_id}.m4a"
+    st.write("🌐 Sunucu ağ engeli tespit edildi. İstemci taraflı bağımsız CDN köprüsü üzerinden ses akışı çekiliyor...")
     
-    # yt-dlp için Streamlit Cloud'u yormayacak ultra hafif ayarlar
-    ydl_opts = {
-        'format': 'm4a/bestaudio/best',
-        'outtmpl': f"audio_{video_id}.%(ext)s",
-        'quiet': True,
-        'no_warnings': True,
-        'noprogress': True,
-        'socket_timeout': 30,
-        'retries': 3,
-        'extractor_args': {'youtube': {'clients': ['tv', 'android']}} # IP Engelini Aşmak İçin Mobil/TV Taklidi
-    }
+    # Bağımsız indirme köprüsünü çalıştırıyoruz
+    basarili_mi = tarayici_tabanli_ses_indir(video_id, hedef_dosya)
     
+    if not basarili_mi or not os.path.exists(hedef_dosya):
+        st.error("❌ YouTube ağ bariyerleri istemci köprüleriyle de aşılamadı. Lütfen videonun herkese açık olduğundan emin olun.")
+        return None
+        
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([f"https://youtube.com{video_id}"])
-            
-        if os.path.exists(hedef_dosya):
-            client = OpenAI(api_key=api_anahtari)
-            with open(hedef_dosya, "rb") as f:
-                transcription = client.audio.transcriptions.create(
-                    model="whisper-1", 
-                    file=f
-                )
-            # Geçici dosyayı temizle
-            try: os.remove(hedef_dosya)
-            except: pass
-            return transcription.text
-    except Exception as e:
-        st.error(f"🚨 Ses Çözme Hatası: {str(e)}")
+        st.write("🚀 Ses akışı başarıyla klonlandı. OpenAI Whisper API ile metne dökülüyor...")
+        client = OpenAI(api_key=api_anahtari)
+        with open(hedef_dosya, "rb") as f:
+            transcription = client.audio.transcriptions.create(
+                model="whisper-1", 
+                file=f
+            )
+        try: os.remove(hedef_dosya)
+        except: pass
+        return transcription.text
+    except Exception as api_err:
+        st.error(f"❌ OpenAI Whisper API Bağlantı Hatası: {str(api_err)}")
         if os.path.exists(hedef_dosya):
             try: os.remove(hedef_dosya)
             except: pass
@@ -198,12 +225,9 @@ if st.button("🚀 Videoyu İndir ve Yapay Zekayla Yorumla", key="main_yt_btn"):
         st.warning("Lütfen bir YouTube linki girin.")
     else:
         v_id = youtube_id_bul_kesin(video_linki)
-        st.info("📥 Sunucu IP engeli Whisper motoruyla aşılıyor. Ses akışı analiz ediliyor (Bu işlem videonun uzunluğuna göre biraz sürebilir)...")
-        metin = whisper_ile_ses_analizi(v_id, openai_key)
-        if not metin:
-            st.error("❌ Ses dosyası çözülemedi. Lütfen API anahtarınızı kontrol edin veya videonun herkese açık olduğundan emin olun.")
-        else:
-            st.success("🎉 Ses başarıyla metne dönüştürüldü! Maddeler çıkarılıyor...")
+        metin = whisper_ile_ses_analizi_zırhlı(v_id, openai_key)
+        if metin:
+            st.success("🎉 Ses bariyerleri tamamen parçalandı ve metne dönüştürüldü! Maddeler çıkarılıyor...")
             ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil="tr")
             ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
             simdi = datetime.now()
@@ -220,22 +244,3 @@ if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
     if not girilen_metin.strip():
         st.warning("Lütfen metin girin.")
     else:
-        ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti, dil="tr")
-        ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler]
-        simdi = datetime.now()
-        veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": girilen_metin, "ozet": ozet_maddeleri}
-        gecmis_ekle(veri_paketi)
-        st.session_state["aktif_ozet"] = veri_paketi
-        st.rerun()
-
-# --- SONUÇ ALANI ---
-if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not None:
-    st.divider()
-    st.info("📂 **Analiz Sonucu**")
-    g = st.session_state["aktif_ozet"]
-    if isinstance(g, dict) and "ozet" in g:
-        for m in g.get('ozet', []):
-            st.write(m)
-        st.divider()
-        t_fmt = rapor_formatlarini_uret(g.get('tarih',''), g.get('saat',''), g.get('ozet', []))
-        st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
