@@ -2,8 +2,8 @@ import streamlit as st
 import json
 import os
 import re
-import urllib.request
 from datetime import datetime
+import streamlit.components.v1 as components
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -113,8 +113,7 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
 
 def video_analiz_proses_et(metin, limit):
     if not isinstance(metin, str) or len(metin.strip()) < 15:
-        st.error("❌ Belirtilen videoya ait transkript akışı alınamadı. Başka bir video linki deneyebilirsiniz.")
-        return
+        return False
         
     ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=limit)
     ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
@@ -122,45 +121,7 @@ def video_analiz_proses_et(metin, limit):
     veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri}
     gecmis_ekle(veri_paketi)
     st.session_state["aktif_ozet"] = veri_paketi
-
-def engelsiz_mirrored_api_ile_transkript_cek(video_id):
-    """
-    Bulut veri merkezlerinin engellerine takılmayan küresel açık transkript 
-    aynalarını (Mirrored API Pipeline) arka arkaya sorgular.
-    """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json"
-    }
-    
-    # 1. Kanal: Küresel Merkezsiz Altyazı Ağ Geçidi (Bypass Kanalı)
-    try:
-        url = f"https://v0.lat{video_id}"
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=8) as response:
-            veri = json.loads(response.read().decode("utf-8"))
-            # Aynadan gelen veri yapısına göre metin birleştirme
-            if isinstance(veri, list):
-                parcalar = [item.get("text", "") for item in veri if item.get("text")]
-                if parcalar: return " ".join(parcalar)
-            elif isinstance(veri, dict) and "transcript" in veri:
-                return veri["transcript"]
-    except:
-        pass
-
-    # 2. Kanal: Bağımsız Appspot Konut IP Dağıtıcı Hattı (Yedek Kanal)
-    try:
-        url_yedek = f"https://appspot.com{video_id}"
-        req_y = urllib.request.Request(url_yedek, headers=headers)
-        with urllib.request.urlopen(req_y, timeout=8) as response_y:
-            veri_y = json.loads(response_y.read().decode("utf-8"))
-            if isinstance(veri_y, list):
-                parcalar = [p.get("text", "") for p in veri_y if p.get("text")]
-                if parcalar: return " ".join(parcalar)
-    except:
-        pass
-        
-    return None
+    return True
 
 def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
     txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {tarih} - {saat}\n"
@@ -188,31 +149,67 @@ st.divider()
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
 st.subheader("📺 1. Mod: YouTube Video Analizi")
-video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://www.youtube.com/watch?v=...", key="main_yt_box")
+video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 
-if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
-    if not video_linki.strip():
-        st.warning("Lütfen bir YouTube linki girin.")
-    else:
-        v_id = youtube_id_bul_kesin(video_linki)
-        
-        with st.spinner("🔄 Güvenli veri merkezsiz ayna kanalları üzerinden video çözümleniyor, lütfen bekleyin..."):
-            gelen_veri = engelsiz_mirrored_api_ile_transkript_cek(v_id)
+if video_linki.strip():
+    v_id = youtube_id_bul_kesin(video_linki)
+    
+    # KULLANICI IP'Sİ ÜZERİNDEN VERİ ÇEKEN JS MOTORU
+    # Streamlit bileşen sınırlarını aşmak ve güvenli dönüt almak için görünmez bir girdi alanı taklit edilir.
+    js_bridge_html = f"""
+    <div id="status-msg" style="font-family:sans-serif; color:#555; font-size:14px; margin-bottom:10px;">
+        🔄 Tarayıcı kanalı üzerinden video veri katmanına bağlanılıyor...
+    </div>
+    <script>
+    async function istemciUzerindenAltyaziGetir() {{
+        const videoId = "{v_id}";
+        const statusDiv = document.getElementById("status-msg");
+        try {{
+            // İstek doğrudan ziyaretçinin tarayıcısından (konut IP'sinden) çıkar, engellenemez.
+            const url = 'https://youtubetranscript.com' + videoId;
+            const res = await fetch('https://allorigins.win' + encodeURIComponent(url));
+            const data = await res.json();
             
-        if gelen_veri:
-            video_analiz_proses_et(gelen_veri, madde_limiti)
-            st.success("🎉 Video verileri başarıyla çözümlendi! Kritik maddeler aşağıda listelenmiştir.")
-            st.rerun()
-        else:
-            st.error("❌ Bu videonun transkript katmanına erişilemedi. Lütfen videonun herkese açık olduğundan veya otomatik altyazı seçeneğinin aktif olduğundan emin olun.")
+            if (data.contents && data.contents.includes('<text')) {{
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(data.contents, "text/xml");
+                const lines = xmlDoc.getElementsByTagName("text");
+                let tamMetin = "";
+                for (let i = 0; i < lines.length; i++) {{
+                    tamMetin += lines[i].textContent + " ";
+                }}
+                
+                // Streamlit veritabanına güvenli enjeksiyon köprüsü
+                const textSpace = window.parent.document.querySelector('textarea[aria-label="Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:"]');
+                if(textSpace) {{
+                    textSpace.value = tamMetin.trim();
+                    textSpace.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    statusDiv.innerHTML = "✅ Video dökümü başarıyla alındı! Aşağıdaki panelden 'Metni Analiz Et' butonuna tıklayabilirsiniz.";
+                    statusDiv.style.color = "green";
+                }}
+            }} else {{
+                statusDiv.innerHTML = "❌ Bu videoya ait transkript katmanı bulunamadı veya video korumalı.";
+                statusDiv.style.color = "red";
+            }}
+        }} catch(e) {{
+            statusDiv.innerHTML = "❌ Bağlantı tüneli tarayıcı engeline takıldı.";
+            statusDiv.style.color = "red";
+        }}
+    }}
+    setTimeout(istemciUzerindenAltyaziGetir, 800);
+    </script>
+    """
+    components.html(js_bridge_html, height=60)
 
 st.divider()
 
 st.subheader("📝 2. Mod: Doğrudan Metin Analizi")
-girilen_metin = st.text_area("Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:", height=150, key="main_text_box")
+# Video dökümü otomatik olarak bu alana akar, kullanıcı için kesintisiz süreç başlar
+girilen_metin = st.text_area("Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:", height=180, key="main_text_box")
+
 if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
     if not girilen_metin.strip():
-        st.warning("Lütfen metin girin.")
+        st.warning("Lütfen analiz edilecek bir metin girin veya yukarıya geçerli bir video linki ekleyin.")
     else:
         ham_maddeler = yerel_mantik_ozetleyici(girilen_metin)
         ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler[:madde_limiti]]
