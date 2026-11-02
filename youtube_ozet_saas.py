@@ -8,6 +8,7 @@ import xml.etree.ElementTree
 from datetime import datetime
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
+from openai import OpenAI
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -145,7 +146,43 @@ def saf_html_altyazi_kaziyici(video_id):
         pass
     return None, "tr"
 
-def akilli_altyazi_indirici(video_id, cerez_yolu):
+def whisper_ile_ses_coz(video_id, api_anahtari):
+    if not api_anahtari:
+        return None, "tr"
+    gecici_ses_dosyasi = f"temp_{video_id}"
+    ydl_opts = {
+        'format': 'm4a/bestaudio/best',
+        'outtmpl': gecici_ses_dosyasi,
+        'quiet': True,
+        'no_warnings': True,
+        'socket_timeout': 30,
+        'retries': 3
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([f"https://youtube.com{video_id}"])
+        
+        indirilen_dosya = f"{gecici_ses_dosyasi}.m4a"
+        if os.path.exists(indirilen_dosya):
+            client = OpenAI(api_key=api_anahtari)
+            audio_file = open(indirilen_dosya, "rb")
+            transcription = client.audio.transcriptions.create(
+                model="whisper-1", 
+                file=audio_file
+            )
+            audio_file.close()
+            try: os.remove(indirilen_dosya)
+            except: pass
+            if transcription.text:
+                return transcription.text, "tr"
+    except Exception as e:
+        try:
+            if os.path.exists(f"{gecici_ses_dosyasi}.m4a"):
+                os.remove(f"{gecici_ses_dosyasi}.m4a")
+        except: pass
+    return None, "tr"
+
+def akilli_altyazi_indirici(video_id, cerez_yolu, api_anahtari):
     safe_id = str(video_id).strip()
     metin, dil = saf_html_altyazi_kaziyici(safe_id)
     if metin and metin.strip():
@@ -158,33 +195,14 @@ def akilli_altyazi_indirici(video_id, cerez_yolu):
         metin = " ".join([parca['text'] for parca in veri])
         if metin.strip(): return metin, transcript.language_code
     except: pass
-    ydl_opts = {
-        'writesubtitles': True, 'writeautomaticsub': True, 'subtitleslangs': ['tr', 'en', 'auto'],
-        'skip_download': True, 'cookiefile': cerez_yolu if os.path.exists(cerez_yolu) else None,
-        'outtmpl': f"sub_{safe_id}", 'quiet': True, 'no_warnings': True, 'ie_key': 'Youtube',
-        'socket_timeout': 15, 'retries': 2, 'extractor_args': {'youtube': {'clients': ['tv', 'android', 'web']}}
-    }
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([safe_id])
-        bulunan_dosya = None
-        for dosya in os.listdir("."):
-            if dosya.startswith(f"sub_{safe_id}") and any(dosya.endswith(ext) for ext in [".vtt", ".srt"]):
-                bulunan_dosya = dosya; break
-        if bulunan_dosya and os.path.exists(bulunan_dosya):
-            indirilen_dil = "en" if ".en" in bulunan_dosya.lower() else "tr"
-            f = open(bulunan_dosya, "r", encoding="utf-8")
-            icerik = f.read()
-            f.close()
-            lines = icerik.split("\n")
-            temiz_satirlar = []
-            for line in lines:
-                if "-->" not in line and line.strip() and not line.strip().isdigit() and "WEBVTT" not in line:
-                    clean_line = re.sub(r'<[^>]*>', '', line).strip()
-                    if clean_line and (not temiz_satirlar or temiz_satirlar[-1] != clean_line): temiz_satirlar.append(clean_line)
-            try: os.remove(bulunan_dosya)
-            except: pass
-            if temiz_satirlar: return " ".join(temiz_satirlar), indirilen_dil
-    except: pass
+    
+    # Sunucu IP engeli varsa veya altyazı bulunamadıysa Whisper API devreye girer
+    if api_anahtari:
+        st.write("🔄 Klasik altyazı yöntemleri engellendi. OpenAI Whisper API ile ses çözülüyor...")
+        metin, dil = whisper_ile_ses_coz(safe_id, api_anahtari)
+        if metin and metin.strip():
+            return metin, dil
+            
     return None, "tr"
 
 def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
@@ -205,6 +223,11 @@ if isinstance(gecmis_listesi, list) and gecmis_listesi:
 else:
     st.sidebar.info("Henüz geçmiş analiz bulunmuyor.")
 
+st.sidebar.divider()
+st.sidebar.title("🔑 API Ayarları")
+env_key = os.getenv("OPENAI_API_KEY", "")
+openai_key = st.sidebar.text_input("OpenAI API Key (Whisper İçin):", value=env_key, type="password")
+
 # --- ANA SAYFA PANELİ ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
 st.write("Gelişmiş İstatistik Paneli ve Kolay Dışa Aktarma Sistemi")
@@ -224,12 +247,8 @@ with sekme1:
             v_id = youtube_id_bul_kesin(video_linki)
             PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
             CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
-            st.write("📥 Koruma duvarları aşılıyor, altyazılar sökülüyor...")
-            metin, altyazi_dili = akilli_altyazi_indirici(v_id, CEREZ_YOLU)
+            st.write("📥 Altyazılar sökülüyor veya ses akışı analiz ediliyor...")
+            metin, altyazi_dili = akilli_altyazi_indirici(v_id, CEREZ_YOLU, openai_key)
             if not metin:
-                st.error("YouTube korumaları aşılamadı veya bu videoda altyazı yok. Lütfen video ayarlarından altyazıların aktif olduğunu kontrol edin.")
+                st.error("YouTube engelleri aşılamadı. Lütfen geçerli bir OpenAI API anahtarı girdiğinizden emin olun.")
             else:
-                st.write("🤖 Yapay zeka maddeleri çıkarıyor...")
-                ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil=altyazi_dili)
-                ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
-                simdi = datetime.now()
