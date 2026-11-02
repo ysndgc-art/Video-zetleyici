@@ -2,8 +2,9 @@ import streamlit as st
 import json
 import os
 import re
+import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import datetime
-import streamlit.components.v1 as components
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -113,7 +114,8 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
 
 def video_analiz_proses_et(metin, limit):
     if not isinstance(metin, str) or len(metin.strip()) < 15:
-        return False
+        st.error("❌ Belirtilen videoya ait transkript akışı boş veya çok kısa.")
+        return
         
     ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=limit)
     ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
@@ -121,7 +123,62 @@ def video_analiz_proses_et(metin, limit):
     veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri}
     gecmis_ekle(veri_paketi)
     st.session_state["aktif_ozet"] = veri_paketi
-    return True
+
+def engelsiz_resmi_yol_ile_altyazi_cek(video_id):
+    """
+    YouTube'un ham video sayfalarındaki gömülü altyazı manifestolarını 
+    gerçekçi tarayıcı taklidi başlıklarıyla ayıklar ve bot korumasını geçer.
+    """
+    # Gerçek bir masaüstü tarayıcısının HTTP kimliği taklit edilir
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache"
+    }
+    
+    try:
+        # 1. Adım: Video sayfasına gerçekçi kimlikle git ve altyazı izlerini (timedtext) ara
+        video_url = f"https://youtube.com{video_id}"
+        req = urllib.request.Request(video_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            html = response.read().decode("utf-8")
+            
+        # YouTube oynatıcı verilerinin içerisindeki timedtext URL'lerini bul
+        match = re.search(r'https://youtube.com[^\s"]+', html)
+        if not match:
+            # Alternatif eşleşme araması yap (Kaçış karakterli URL'ler için)
+            match = re.search(r'https:\\/\\/://youtube.com\\/api\\/timedtext[^"\s]+', html)
+            
+        if match:
+            raw_url = match.group(0)
+            # URL içerisindeki JSON/Unicode kaçış karakterlerini temizle ve formatla
+            clean_url = raw_url.replace(r'\/', '/').replace('\\u0026', '&').replace('&amp;', '&')
+            
+            # Parametreleri manipüle et: Varsayılan dil olarak Türkçe veya otomatik çeviri zorla
+            if "lang=tr" not in clean_url:
+                clean_url += "&lang=tr&fmt=srv1"
+            else:
+                clean_url = re.sub(r'fmt=[^&]+', 'fmt=srv1', clean_url)
+                
+            # 2. Adım: Ayıklanan resmi XML altyazı kaynağını doğrudan güvenli kanaldan çek
+            req_xml = urllib.request.Request(clean_url, headers=headers)
+            with urllib.request.urlopen(req_xml, timeout=10) as xml_response:
+                xml_data = xml_response.read().decode("utf-8")
+                
+            # XML verisini ayrıştır ve konuşma metinlerini birleştir
+            if xml_data.strip() and "<text" in xml_data:
+                root = ET.fromstring(xml_data)
+                parcalar = [t.text for t in root.findall(".//text") if t.text]
+                if parcalar:
+                    # HTML entity kodlarını (&amp;, &quot; vb.) düzeltmek için basit temizlik
+                    metin = " ".join(parcalar)
+                    metin = metin.replace("&amp;", "&").replace("&quot;", '"').replace("&#39;", "'")
+                    return metin
+    except Exception as e:
+        pass
+        
+    return None
 
 def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
     txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {tarih} - {saat}\n"
@@ -151,82 +208,30 @@ madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, m
 st.subheader("📺 1. Mod: YouTube Video Analizi")
 video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 
-if video_linki.strip():
-    v_id = youtube_id_bul_kesin(video_linki)
-    
-    # KULLANICI IP'Sİ ÜZERİNDEN VERİ ÇEKEN JS MOTORU
-    # Streamlit bileşen sınırlarını aşmak ve güvenli dönüt almak için görünmez bir girdi alanı taklit edilir.
-    js_bridge_html = f"""
-    <div id="status-msg" style="font-family:sans-serif; color:#555; font-size:14px; margin-bottom:10px;">
-        🔄 Tarayıcı kanalı üzerinden video veri katmanına bağlanılıyor...
-    </div>
-    <script>
-    async function istemciUzerindenAltyaziGetir() {{
-        const videoId = "{v_id}";
-        const statusDiv = document.getElementById("status-msg");
-        try {{
-            // İstek doğrudan ziyaretçinin tarayıcısından (konut IP'sinden) çıkar, engellenemez.
-            const url = 'https://youtubetranscript.com' + videoId;
-            const res = await fetch('https://allorigins.win' + encodeURIComponent(url));
-            const data = await res.json();
+if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
+    if not video_linki.strip():
+        st.warning("Lütfen bir YouTube linki girin.")
+    else:
+        v_id = youtube_id_bul_kesin(video_linki)
+        
+        with st.spinner("🔄 Anti-bot bariyerleri aşılıyor... Doğrudan YouTube resmi veri katmanından transkript çözümleniyor..."):
+            gelen_veri = engelsiz_resmi_yol_ile_altyazi_cek(v_id)
             
-            if (data.contents && data.contents.includes('<text')) {{
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(data.contents, "text/xml");
-                const lines = xmlDoc.getElementsByTagName("text");
-                let tamMetin = "";
-                for (let i = 0; i < lines.length; i++) {{
-                    tamMetin += lines[i].textContent + " ";
-                }}
-                
-                // Streamlit veritabanına güvenli enjeksiyon köprüsü
-                const textSpace = window.parent.document.querySelector('textarea[aria-label="Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:"]');
-                if(textSpace) {{
-                    textSpace.value = tamMetin.trim();
-                    textSpace.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                    statusDiv.innerHTML = "✅ Video dökümü başarıyla alındı! Aşağıdaki panelden 'Metni Analiz Et' butonuna tıklayabilirsiniz.";
-                    statusDiv.style.color = "green";
-                }}
-            }} else {{
-                statusDiv.innerHTML = "❌ Bu videoya ait transkript katmanı bulunamadı veya video korumalı.";
-                statusDiv.style.color = "red";
-            }}
-        }} catch(e) {{
-            statusDiv.innerHTML = "❌ Bağlantı tüneli tarayıcı engeline takıldı.";
-            statusDiv.style.color = "red";
-        }}
-    }}
-    setTimeout(istemciUzerindenAltyaziGetir, 800);
-    </script>
-    """
-    components.html(js_bridge_html, height=60)
+        if gelen_veri:
+            video_analiz_proses_et(gelen_veri, madde_limiti)
+            st.success("🎉 Video verileri başarıyla çözümlendi! Kritik maddeler aşağıda listelenmiştir.")
+            st.rerun()
+        else:
+            st.error("❌ Bu videonun transkript katmanına doğrudan erişilemedi. Lütfen videonun herkese açık olduğundan ve altyazı seçeneğinin (otomatik veya manuel) aktif olduğundan emin olun.")
 
 st.divider()
 
 st.subheader("📝 2. Mod: Doğrudan Metin Analizi")
-# Video dökümü otomatik olarak bu alana akar, kullanıcı için kesintisiz süreç başlar
-girilen_metin = st.text_area("Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:", height=180, key="main_text_box")
-
+girilen_metin = st.text_area("Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:", height=150, key="main_text_box")
 if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
     if not girilen_metin.strip():
-        st.warning("Lütfen analiz edilecek bir metin girin veya yukarıya geçerli bir video linki ekleyin.")
+        st.warning("Lütfen metin girin.")
     else:
         ham_maddeler = yerel_mantik_ozetleyici(girilen_metin)
         ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler[:madde_limiti]]
         simdi = datetime.now()
-        veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": girilen_metin, "ozet": ozet_maddeleri}
-        gecmis_ekle(veri_paketi)
-        st.session_state["aktif_ozet"] = veri_paketi
-        st.rerun()
-
-# --- SONUÇ ALANI ---
-if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not None:
-    st.divider()
-    st.info("📂 **Analiz Sonucu**")
-    g = st.session_state["aktif_ozet"]
-    if isinstance(g, dict) and "ozet" in g:
-        for m in g.get('ozet', []):
-            st.write(m)
-        st.divider()
-        t_fmt = rapor_formatlarini_uret(g.get('tarih',''), g.get('saat',''), g.get('ozet', []))
-        st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
