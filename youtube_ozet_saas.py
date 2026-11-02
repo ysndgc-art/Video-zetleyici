@@ -3,12 +3,13 @@ import json
 import os
 import re
 from datetime import datetime
-import streamlit.components.v1 as components
+from youtube_transcript_api import YouTubeTranscriptApi
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
 
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
+COOKIE_DOSYASI = "youtube_cookies.txt"
 
 def veritabani_yukle():
     try:
@@ -22,7 +23,7 @@ def veritabani_yukle():
                     return veri
     except:
         pass
-    return {"gecmis": []}
+    return {"gecmis":}
 
 def veritabani_kaydet(veri):
     try:
@@ -34,7 +35,7 @@ def veritabani_kaydet(veri):
 def gecmis_ekle(yeni_ozet):
     veri = veritabani_yukle()
     if not isinstance(veri, dict) or "gecmis" not in veri:
-        veri = {"gecmis": []}
+        veri = {"gecmis":}
     if not any(g.get('metin', '')[:30] == yeni_ozet['metin'][:30] for g in veri["gecmis"]):
         veri["gecmis"].insert(0, yeni_ozet)
         veritabani_kaydet(veri)
@@ -57,7 +58,7 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
     
     if "." not in temiz_metin or temiz_metin.count(".") < 3:
         ham_kelimeler = temiz_metin.split()
-        parçalanmış_cumleler = []
+        parçalanmış_cumleler =
         for i in range(0, len(ham_kelimeler), 15):
             grup = ham_kelimeler[i:i+15]
             parçalanmış_cumleler.append(" ".join(grup) + ".")
@@ -93,7 +94,7 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
     en_iyi_indeksler = sorted(cumle_puanlari, key=cumle_puanlari.get, reverse=True)[:madde_sayisi]
     en_iyi_indeksler.sort()
 
-    sonuc = []
+    sonuc =
     for idx in en_iyi_indeksler:
         ham_cumle = cumleler[idx].strip()
         if ham_cumle:
@@ -111,10 +112,33 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
                 sonuc.append(ham_cumle)
     return sonuc
 
+def premium_oturum_ile_transkript_cek(video_id):
+    """
+    Mevcut cookies dosyasını UTF-8 uyumluluğu ile okuyarak 
+    YouTube altyazı motoruna aktaran optimize edilmiş Premium işlev.
+    """
+    try:
+        if os.path.exists(COOKIE_DOSYASI):
+            # Çerez tabanlı istek yapılandırması
+            altyazi_listesi = YouTubeTranscriptApi.get_transcript(
+                video_id, 
+                languages=['tr', 'en'], 
+                cookies=COOKIE_DOSYASI
+            )
+            metin = " ".join([parca['text'] for parca in altyazi_listesi])
+            if len(metin.strip()) > 30:
+                return metin
+        else:
+            st.sidebar.error("❌ Kritik Hata: youtube_cookies.txt bulunamadı.")
+    except Exception as e:
+        # Hatanın kaynağını tam tespit etmek için loglama alanı
+        st.sidebar.error(f"📋 Oturum/Sistem Mesajı: {str(e)}")
+    return None
+
 # --- SIDEBAR ---
 st.sidebar.title("📜 Analiz Geçmişiniz")
 veri_havuzu = veritabani_yukle()
-gecmis_listesi = veri_havuzu.get("gecmis", [])
+gecmis_listesi = veri_havuzu.get("gecmis",)
 if isinstance(gecmis_listesi, list) and gecmis_listesi:
     for sira, g in enumerate(gecmis_listesi[:10]):
         if st.sidebar.button(f"⏱️ {g.get('saat','')} - {g.get('metin','')[:15]}...", key=f"hist_{sira}"):
@@ -122,91 +146,46 @@ if isinstance(gecmis_listesi, list) and gecmis_listesi:
 else:
     st.sidebar.info("Henüz geçmiş analiz bulunmuyor.")
 
+if os.path.exists(COOKIE_DOSYASI):
+    st.sidebar.success("👑 Premium Kimlik Doğrulama Dosyası Aktif!")
+else:
+    st.sidebar.danger("⚠️ youtube_cookies.txt dosyası bulunamadı!")
+
 # --- ANA SAYFA PANELİ ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
-st.write("Gelişmiş İstatistik Paneli ve Kesintisiz Çözüm Altyapısı")
+st.write("Premium Oturum Desteği ve Kesintisiz Çözüm Altyapısı")
 st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
-# Kullanıcı tarayıcısından URL yoluyla gelen veriyi yakala ve session_state içerisine güvenle işle
-query_params = st.query_params
-if "transkript_payload" in query_params:
-    ham_payload = query_params["transkript_payload"]
-    if len(ham_payload.strip()) > 20:
-        st.session_state["otomatik_gelen_metin"] = ham_payload
-    st.query_params.clear()
-
 st.subheader("📺 1. Mod: YouTube Video Analizi")
 video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 
-if video_linki.strip():
-    v_id = youtube_id_bul_kesin(video_linki)
-    
-    # 🔒 KULLANICI IP TABANLI VERI TÜNELI (CORS & IP BYPASS PRO)
-    js_bridge_html = f"""
-    <div id="status-panel" style="font-family:sans-serif; background-color:#e8f5e9; padding:12px; border-radius:8px; color:#2e7d32; font-size:14px; font-weight:bold;">
-        🔄 Kullanıcı internet ağ geçidi üzerinden video transkript katmanı deşifre ediliyor...
-    </div>
-    <script>
-    async function tarayiciGecidiSorgula() {{
-        const vId = "{v_id}";
-        const statusPanel = document.getElementById("status-panel");
+if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
+    if not video_linki.strip():
+        st.warning("Lütfen bir YouTube linki girin.")
+    else:
+        v_id = youtube_id_bul_kesin(video_linki)
         
-        // Sunucu engellerini tamamen aşan, doğrudan kullanıcının kendi IP'si üzerinden beslenen en stabil açık API hattı
-        const endpoints = [
-            'https://vevioz.com' + vId,
-            'https://appspot.com' + vId
-        ];
-        
-        let basariliMetin = "";
-        
-        for (let url of endpoints) {{
-            try {{
-                const res = await fetch(url);
-                const data = await res.json();
-                if (Array.isArray(data)) {{
-                    basariliMetin = data.map(item => item.text || "").join(" ");
-                }} else if (data && data.transcript) {{
-                    basariliMetin = data.transcript;
-                }}
-                if (basariliMetin.trim().length > 30) break;
-            }} catch(e) {{ continue; }}
-        }}
-        
-        if (basariliMetin.trim().length > 30) {{
-            statusPanel.innerHTML = "✅ Veri başarıyla deşifre edildi! Sayfa reaktif olarak güncelleniyor...";
-            // Streamlit reaktif tetikleyici parametre enjeksiyonu
-            const mainUrl = window.parent.location.origin + window.parent.location.pathname + "?transkript_payload=" + encodeURIComponent(basariliMetin.trim());
-            window.parent.location.href = mainUrl;
-        }} else {{
-            statusPanel.innerHTML = "❌ Bu videoda otomatik transkript katmanı bulunamadı veya video kısıtlı.";
-            statusPanel.style.backgroundColor = "#ffebee";
-            statusPanel.style.color = "#c62828";
-        }}
-    }}
-    setTimeout(tarayiciGecidiSorgula, 700);
-    </script>
-    """
-    components.html(js_bridge_html, height=65)
-
-# Eğer tarayıcı tüneli veriyi getirip URL'e fırlattıysa Python tarafında analizi otomatik başlat
-if "otomatik_gelen_metin" in st.session_state and st.session_state["otomatik_gelen_metin"]:
-    cozulen_metin = st.session_state["otomatik_gelen_metin"]
-    st.session_state["otomatik_gelen_metin"] = None  # Sonsuz döngü koruması
-    
-    ham_maddeler = yerel_mantik_ozetleyici(cozulen_metin, madde_sayisi=madde_limiti)
-    ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
-    simdi = datetime.now()
-    veri_paketi = {
-        "tarih": simdi.strftime("%d.%m.%Y"), 
-        "saat": simdi.strftime("%H:%M:%S"), 
-        "metin": cozulen_metin, 
-        "ozet": ozet_maddeleri
-    }
-    gecmis_ekle(veri_paketi)
-    st.session_state["aktif_ozet"] = veri_paketi
-    st.success("🎉 Video verileri başarıyla çözümlendi!")
+        with st.spinner("🔄 Premium ağ geçidi aktif ediliyor... Transkript güvenle indiriliyor..."):
+            gelen_veri = premium_oturum_ile_transkript_cek(v_id)
+            
+        if gelen_veri:
+            ham_maddeler = yerel_mantik_ozetleyici(gelen_veri, madde_sayisi=madde_limiti)
+            ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
+            simdi = datetime.now()
+            veri_paketi = {
+                "tarih": simdi.strftime("%d.%m.%Y"), 
+                "saat": simdi.strftime("%H:%M:%S"), 
+                "metin": gelen_veri, 
+                "ozet": ozet_maddeleri
+            }
+            gecmis_ekle(veri_paketi)
+            st.session_state["aktif_ozet"] = veri_paketi
+            st.success("🎉 Video verileri Premium hesabınız aracılığıyla başarıyla çözümlendi!")
+            st.rerun()
+        else:
+            st.error("❌ Transkript katmanına otomatik olarak erişilemedi. Lütfen sol menüdeki 'Oturum/Sistem Mesajı' uyarısını kontrol edin.")
 
 st.divider()
 
@@ -230,9 +209,9 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not No
     st.info("📂 **Analiz Sonucu**")
     g = st.session_state["aktif_ozet"]
     if isinstance(g, dict) and "ozet" in g:
-        for m in g.get('ozet', []):
+        for m in g.get('ozet',):
             st.write(m)
         st.divider()
         t_fmt = f"--- AI ANALIZ RAPORU ---\nTarih: {g.get('tarih','')}\n\nKritik Maddeler:\n"
-        for m in g.get('ozet', []): t_fmt += f"{m}\n"
+        for m in g.get('ozet',): t_fmt += f"{m}\n"
         st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
