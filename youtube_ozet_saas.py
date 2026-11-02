@@ -23,7 +23,7 @@ def veritabani_yukle():
                     return veri
     except:
         pass
-    return {"gecmis":}
+    return {"gecmis": []}
 
 def veritabani_kaydet(veri):
     try:
@@ -35,7 +35,7 @@ def veritabani_kaydet(veri):
 def gecmis_ekle(yeni_ozet):
     veri = veritabani_yukle()
     if not isinstance(veri, dict) or "gecmis" not in veri:
-        veri = {"gecmis":}
+        veri = {"gecmis": []}
     if not any(g.get('metin', '')[:30] == yeni_ozet['metin'][:30] for g in veri["gecmis"]):
         veri["gecmis"].insert(0, yeni_ozet)
         veritabani_kaydet(veri)
@@ -58,7 +58,7 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
     
     if "." not in temiz_metin or temiz_metin.count(".") < 3:
         ham_kelimeler = temiz_metin.split()
-        parçalanmış_cumleler =
+        parçalanmış_cumleler = []
         for i in range(0, len(ham_kelimeler), 15):
             grup = ham_kelimeler[i:i+15]
             parçalanmış_cumleler.append(" ".join(grup) + ".")
@@ -94,7 +94,7 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
     en_iyi_indeksler = sorted(cumle_puanlari, key=cumle_puanlari.get, reverse=True)[:madde_sayisi]
     en_iyi_indeksler.sort()
 
-    sonuc =
+    sonuc = []
     for idx in en_iyi_indeksler:
         ham_cumle = cumleler[idx].strip()
         if ham_cumle:
@@ -114,12 +114,11 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
 
 def premium_oturum_ile_transkript_cek(video_id):
     """
-    Mevcut cookies dosyasını UTF-8 uyumluluğu ile okuyarak 
-    YouTube altyazı motoruna aktaran optimize edilmiş Premium işlev.
+    Mevcut cookies dosyasını kullanarak YouTube altyazı motoruna 
+    aktaran optimize edilmiş Premium işlev.
     """
     try:
         if os.path.exists(COOKIE_DOSYASI):
-            # Çerez tabanlı istek yapılandırması
             altyazi_listesi = YouTubeTranscriptApi.get_transcript(
                 video_id, 
                 languages=['tr', 'en'], 
@@ -131,14 +130,13 @@ def premium_oturum_ile_transkript_cek(video_id):
         else:
             st.sidebar.error("❌ Kritik Hata: youtube_cookies.txt bulunamadı.")
     except Exception as e:
-        # Hatanın kaynağını tam tespit etmek için loglama alanı
         st.sidebar.error(f"📋 Oturum/Sistem Mesajı: {str(e)}")
     return None
 
 # --- SIDEBAR ---
 st.sidebar.title("📜 Analiz Geçmişiniz")
 veri_havuzu = veritabani_yukle()
-gecmis_listesi = veri_havuzu.get("gecmis",)
+gecmis_listesi = veri_havuzu.get("gecmis", [])
 if isinstance(gecmis_listesi, list) and gecmis_listesi:
     for sira, g in enumerate(gecmis_listesi[:10]):
         if st.sidebar.button(f"⏱️ {g.get('saat','')} - {g.get('metin','')[:15]}...", key=f"hist_{sira}"):
@@ -149,7 +147,7 @@ else:
 if os.path.exists(COOKIE_DOSYASI):
     st.sidebar.success("👑 Premium Kimlik Doğrulama Dosyası Aktif!")
 else:
-    st.sidebar.danger("⚠️ youtube_cookies.txt dosyası bulunamadı!")
+    st.sidebar.error("⚠️ youtube_cookies.txt dosyası bulunamadı!")
 
 # --- ANA SAYFA PANELİ ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
@@ -209,9 +207,9 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not No
     st.info("📂 **Analiz Sonucu**")
     g = st.session_state["aktif_ozet"]
     if isinstance(g, dict) and "ozet" in g:
-        for m in g.get('ozet',):
+        for m in g.get('ozet', []):
             st.write(m)
         st.divider()
         t_fmt = f"--- AI ANALIZ RAPORU ---\nTarih: {g.get('tarih','')}\n\nKritik Maddeler:\n"
-        for m in g.get('ozet',): t_fmt += f"{m}\n"
+        for m in g.get('ozet', []): t_fmt += f"{m}\n"
         st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
