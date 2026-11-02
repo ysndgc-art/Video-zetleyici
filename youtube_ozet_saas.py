@@ -22,7 +22,7 @@ def veritabani_yukle():
                     return veri
     except:
         pass
-    return {"gecmis":}
+    return {"gecmis": []}
 
 def veritabani_kaydet(veri):
     try:
@@ -34,7 +34,7 @@ def veritabani_kaydet(veri):
 def gecmis_ekle(yeni_ozet):
     veri = veritabani_yukle()
     if not isinstance(veri, dict) or "gecmis" not in veri:
-        veri = {"gecmis":}
+        veri = {"gecmis": []}
     if not any(g.get('metin', '')[:30] == yeni_ozet['metin'][:30] for g in veri["gecmis"]):
         veri["gecmis"].insert(0, yeni_ozet)
         veritabani_kaydet(veri)
@@ -105,7 +105,7 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
             
             ham_cumle = ham_cumle.strip()
             if ham_cumle:
-                ham_cumle = ham_cumle.upper() + ham_cumle[1:]
+                ham_cumle = ham_cumle[0].upper() + ham_cumle[1:]
                 if not ham_cumle.endswith("."):
                     ham_cumle += "."
                 sonuc.append(ham_cumle)
@@ -124,52 +124,30 @@ def video_analiz_proses_et(metin, limit):
     st.session_state["aktif_ozet"] = veri_paketi
 
 def engelsiz_audio_pipeline_ile_transkript_cek(video_id):
-    """
-    YouTube IP ve CORS engellerine takılmayan, merkezsiz ses deşifre (Speech-to-Text)
-    altyapısını kullanarak videonun konuşma dökümünü temiz bir şekilde çeker.
-    """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "application/json"
     }
     
-    # Küresel dağıtık Speech-to-Text API havuzu hattı
+    # Dağıtık veri tünelleri ve aynalar
     endpoints = [
-        f"https://vevioz.com{video_id}",
-        f"https://v0.lat{video_id}"
+        f"https://v0.lat{video_id}",
+        f"https://appspot.com{video_id}"
     ]
     
     for url in endpoints:
         try:
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=10) as response:
+            with urllib.request.urlopen(req, timeout=8) as response:
                 res_data = response.read().decode("utf-8")
-                
-                # Eğer doğrudan altyazı aynasından veri geldiyse
-                if "[" in res_data or "{" in res_data:
-                    veri = json.loads(res_data)
-                    if isinstance(veri, list):
-                        parcalar = [item.get("text", "") for item in veri if item.get("text")]
-                        if parcalar: return " ".join(parcalar)
-                    elif isinstance(veri, dict) and "transcript" in veri:
-                        return veri["transcript"]
-                    elif isinstance(veri, dict) and "text" in veri:
-                        return veri["text"]
+                veri = json.loads(res_data)
+                if isinstance(veri, list):
+                    parcalar = [item.get("text", "") for item in veri if item.get("text")]
+                    if parcalar: return " ".join(parcalar)
+                elif isinstance(veri, dict) and "transcript" in veri:
+                    return veri["transcript"]
         except:
             continue
-            
-    # Son Çare / Güvenli B Planı: Küresel altyazı dönüştürücü ağ geçidi
-    try:
-        yedek_url = f"https://appspot.com{video_id}"
-        req_y = urllib.request.Request(yedek_url, headers=headers)
-        with urllib.request.urlopen(req_y, timeout=8) as response_y:
-            veri_y = json.loads(response_y.read().decode("utf-8"))
-            if isinstance(veri_y, list):
-                parcalar = [p.get("text", "") for p in veri_y if p.get("text")]
-                if parcalar: return " ".join(parcalar)
-    except:
-        pass
-        
     return None
 
 def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
@@ -206,7 +184,7 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
     else:
         v_id = youtube_id_bul_kesin(video_linki)
         
-        with st.spinner("🔄 IP ve CORS kısıtlamaları harici ses tüneli (Audio Pipeline) ile aşılıyor, transkript çözümleniyor..."):
+        with st.spinner("🔄 Bulut kısıtlamaları bypass ediliyor... Transkript çözümleniyor..."):
             gelen_veri = engelsiz_audio_pipeline_ile_transkript_cek(v_id)
             
         if gelen_veri:
@@ -214,7 +192,7 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
             st.success("🎉 Video verileri başarıyla çözümlendi! Kritik maddeler aşağıda listelenmiştir.")
             st.rerun()
         else:
-            st.error("❌ Bu videonun ses/transkript katmanına erişilemedi. Lütfen videonun herkese açık olduğundan veya konuşma içerdiğinden emin olun.")
+            st.error("❌ Bu videonun transkript katmanına erişilemedi. Lütfen videonun herkese açık olduğundan veya altyazı içerdiğinden emin olun.")
 
 st.divider()
 
@@ -224,8 +202,8 @@ if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
     if not girilen_metin.strip():
         st.warning("Lütfen metin girin.")
     else:
-        ham_maddeler = yerel_mantik_ozetleyici(girilen_metin)
-        ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler[:madde_limiti]]
+        ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti)
+        ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler]
         simdi = datetime.now()
         veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": girilen_metin, "ozet": ozet_maddeleri}
         gecmis_ekle(veri_paketi)
@@ -242,3 +220,4 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not No
             st.write(m)
         st.divider()
         t_fmt = rapor_formatlarini_uret(g.get('tarih',''), g.get('saat',''), g.get('ozet', []))
+        st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
