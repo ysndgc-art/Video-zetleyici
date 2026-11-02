@@ -1,10 +1,1 @@
-yt-dlp
 streamlit
-reportlab
-deep-translator
-youtube-transcript-api
-openai
-SpeechRecognition
-pydub
-google-api-python-client
-beautifulsoup4
