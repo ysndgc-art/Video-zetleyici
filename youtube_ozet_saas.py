@@ -119,28 +119,21 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5, dil="tr"):
     return sonuc
 
 def tarayici_tabanli_ses_indir(video_id, kayit_yolu):
-    """
-    Streamlit Cloud ağ engelini aşmak için açık kaynaklı harici CDN 
-    köprüsünü tetikler ve sesi güvenli bir şekilde sunucuya çeker.
-    """
     try:
         api_url = f"https://b-cdn.net{video_id}"
         req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
         with urllib.request.urlopen(req, timeout=15) as response:
             veri = json.loads(response.read().decode('utf-8'))
-            # API'den gelen doğrudan ses dosyası linkini yakala
             ses_url = veri.get("audio_url") or veri.get("url") or veri.get("data", {}).get("url")
             if ses_url:
-                # Sesi sunucuya stream et
                 req_download = urllib.request.Request(ses_url, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req_download, timeout=30) as ses_response:
                     with open(kayit_yolu, "wb") as f:
                         f.write(ses_response.read())
                 return True
-    except Exception as e:
-        st.warning(f"⚠️ 1. Köprü denemesi başarısız, yedek CDN ayağa kaldırılıyor...")
+    except:
+        st.warning("⚠️ 1. Köprü denemesi başarısız, yedek CDN ayağa kaldırılıyor...")
     
-    # Yedek Köprü Motoru (FallBack API)
     try:
         yedek_url = f"https://vexdh.com{video_id}"
         req_y = urllib.request.Request(yedek_url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -154,7 +147,7 @@ def tarayici_tabanli_ses_indir(video_id, kayit_yolu):
         pass
     return False
 
-def whisper_ile_ses_analizi_zırhlı(video_id, api_anahtari):
+def whisper_ile_ses_analizi_zirhlı(video_id, api_anahtari):
     if not api_anahtari:
         st.error("❌ OpenAI API Key girmeden video analizi yapılamaz. Lütfen sol menüden anahtarınızı girin.")
         return None
@@ -162,7 +155,6 @@ def whisper_ile_ses_analizi_zırhlı(video_id, api_anahtari):
     hedef_dosya = f"tarayici_audio_{video_id}.m4a"
     st.write("🌐 Sunucu ağ engeli tespit edildi. İstemci taraflı bağımsız CDN köprüsü üzerinden ses akışı çekiliyor...")
     
-    # Bağımsız indirme köprüsünü çalıştırıyoruz
     basarili_mi = tarayici_tabanli_ses_indir(video_id, hedef_dosya)
     
     if not basarili_mi or not os.path.exists(hedef_dosya):
@@ -186,6 +178,24 @@ def whisper_ile_ses_analizi_zırhlı(video_id, api_anahtari):
             try: os.remove(hedef_dosya)
             except: pass
     return None
+
+def video_analiz_tetikle(link, api_key, limit):
+    if not link.strip():
+        st.warning("Lütfen bir YouTube linki girin.")
+        return
+    v_id = youtube_id_bul_kesin(link)
+    metin = whisper_ile_ses_analizi_zirhlı(v_id, api_key)
+    if not metin:
+        st.error("❌ Ses dosyası çözülemedi. API anahtarınızı veya video linkinizi kontrol edin.")
+        return
+    st.success("🎉 Ses bariyerleri tamamen parçalandı ve metne dönüştürüldü! Maddeler çıkarılıyor...")
+    ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=limit, dil="tr")
+    ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
+    simdi = datetime.now()
+    veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri}
+    gecmis_ekle(veri_paketi)
+    st.session_state["aktif_ozet"] = veri_paketi
+    st.rerun()
 
 def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
     txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {tarih} - {saat}\n"
@@ -221,20 +231,7 @@ madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, m
 st.subheader("📺 1. Mod: YouTube Video Analizi")
 video_linki = st.text_input("YouTube Linki veya Kodu:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 if st.button("🚀 Videoyu İndir ve Yapay Zekayla Yorumla", key="main_yt_btn"):
-    if not video_linki.strip():
-        st.warning("Lütfen bir YouTube linki girin.")
-    else:
-        v_id = youtube_id_bul_kesin(video_linki)
-        metin = whisper_ile_ses_analizi_zırhlı(v_id, openai_key)
-        if metin:
-            st.success("🎉 Ses bariyerleri tamamen parçalandı ve metne dönüştürüldü! Maddeler çıkarılıyor...")
-            ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil="tr")
-            ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
-            simdi = datetime.now()
-            veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri}
-            gecmis_ekle(veri_paketi)
-            st.session_state["aktif_ozet"] = veri_paketi
-            st.rerun()
+    video_analiz_tetikle(video_linki, openai_key, madde_limiti)
 
 st.divider()
 
@@ -244,3 +241,6 @@ if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
     if not girilen_metin.strip():
         st.warning("Lütfen metin girin.")
     else:
+        ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti, dil="tr")
+        ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler]
+        simdi = datetime.now()
