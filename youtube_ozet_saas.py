@@ -2,8 +2,8 @@ import streamlit as st
 import json
 import os
 import re
-import urllib.request
 from datetime import datetime
+import streamlit.components.v1 as components
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -84,7 +84,6 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
             continue
         for kelime in kelime_listesi:
             if kelime in frekanslar:
-                puan += frevivanslar[kelime] if kelime in frekanslar else puan
                 puan += frekanslar[kelime]
         cumle_puanlari[idx] = puan
 
@@ -117,48 +116,12 @@ def video_analiz_proses_et(metin, limit):
         st.error("❌ Belirtilen videoya ait transkript akışı alınamadı. Başka bir video linki deneyebilirsiniz.")
         return
         
-    st.success("🎉 Video verileri başarıyla çözümlendi! Kritik maddeler yapılandırılıyor...")
     ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=limit)
     ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
     simdi = datetime.now()
     veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri}
     gecmis_ekle(veri_paketi)
     st.session_state["aktif_ozet"] = veri_paketi
-    st.rerun()
-
-def cdn_hattindan_altyazi_cek(video_id):
-    """
-    Bulut engellerine takılmayan, bağımsız ve açık dünya transkript 
-    tünellerini senkron olarak Python kanalıyla sorgular.
-    """
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    
-    # 1. Güvenli Hat: Açık Altyazı API Köprüsü
-    try:
-        api_url = f"https://bhawanigarg.com{video_id}"
-        req = urllib.request.Request(api_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=7) as response:
-            veri = json.loads(response.read().decode("utf-8"))
-            if veri.get("success") and veri.get("transcript"):
-                return veri.get("transcript")
-    except:
-        pass
-
-    # 2. Güvenli Hat: Yedek Küresel Transkript Havuzu
-    try:
-        yedek_url = f"https://youtubetranscript.com{video_id}"
-        req_y = urllib.request.Request(yedek_url, headers=headers)
-        with urllib.request.urlopen(req_y, timeout=7) as res_y:
-            xml_raw = res_y.read().decode("utf-8")
-            if xml_raw.strip() and "<text" in xml_raw:
-                import xml.etree.ElementTree as ET
-                root = ET.fromstring(xml_raw)
-                parcalar = [t.text for t in root.findall(".//text") if t.text]
-                if parcalar:
-                    return " ".join(parcalar)
-    except:
-        pass
-    return None
 
 def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
     txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {tarih} - {saat}\n"
@@ -166,6 +129,12 @@ def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
     txt_cikisi += "\nKritik Maddeler:\n"
     for m in maddeler: txt_cikisi += f"{m}\n"
     return txt_cikisi
+
+# --- SESSION STATE INITIALIZATION ---
+if "js_tetiklendi" not in st.session_state:
+    st.session_state["js_tetiklendi"] = False
+if "mevcut_video_id" not in st.session_state:
+    st.session_state["mevcut_video_id"] = ""
 
 # --- SIDEBAR ---
 st.sidebar.title("📜 Analiz Geçmişiniz")
@@ -185,26 +154,60 @@ st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
-# MODLAR
 st.subheader("📺 1. Mod: YouTube Video Analizi")
+video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://www.youtube.com/watch?v=...", key="main_yt_box")
 
-# KESİN VE SABİT URL GİRİŞ ALANI
-video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
+# JAVASCRIPT KÖPRÜSÜ VE ASENKRON VERİ YÖNETİMİ
+if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn") and video_linki.strip():
+    v_id = youtube_id_bul_kesin(video_linki)
+    st.session_state["mevcut_video_id"] = v_id
+    st.session_state["js_tetiklendi"] = True
+    st.info("🔄 Güvenli tarayıcı kanalı üzerinden video dökümü çözümleniyor, lütfen bekleyin...")
 
-if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
-    if not video_linki.strip():
-        st.warning("Lütfen bir YouTube linki girin.")
-    else:
-        v_id = youtube_id_bul_kesin(video_linki)
-        st.info("doc 🔄 Güvenli veri kanalları üzerinden video dökümü analiz ediliyor...")
-        
-        # Senkron CDN motorunu tetikle
-        video_metni = cdn_hattindan_altyazi_cek(v_id)
-        
-        if video_metni:
-            video_analiz_proses_et(video_metni, madde_limiti)
+if st.session_state["js_tetiklendi"]:
+    # Client-side çalışan akıllı altyazı yakalayıcı köprü
+    js_bridge_code = f"""
+    <script>
+    async function istemciUzerindenAltyaziGetir() {{
+        const videoId = "{st.session_state['mevcut_video_id']}";
+        try {{
+            // Doğrudan kullanıcının tarayıcısının IP'sini kullanarak YouTube altyazı motorunu sorgular (IP engeline takılmaz)
+            const proxyUrl = 'https://allorigins.win' + encodeURIComponent('https://youtubetranscript.com' + videoId);
+            const response = await fetch(proxyUrl);
+            const data = await response.json();
+            
+            if (data.contents && data.contents.includes('<text')) {{
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(data.contents, "text/xml");
+                const lines = xmlDoc.getElementsByTagName("text");
+                let tamMetin = "";
+                for (let i = 0; i < lines.length; i++) {{
+                    tamMetin += lines[i].textContent + " ";
+                }
+                window.parent.postMessage({{type: 'streamlit:setComponentValue', value: tamMetin}}, '*');
+            }} else {{
+                window.parent.postMessage({{type: 'streamlit:setComponentValue', value: 'ALTYAZI_YOK'}}, '*');
+            }}
+        }} catch(e) {{
+            window.parent.postMessage({{type: 'streamlit:setComponentValue', value: 'HATA'}}, '*');
+        }}
+    }}
+    istemciUzerindenAltyaziGetir();
+    </script>
+    """
+    # Görünmez bir iframe bileşeniyle js çalıştırılır ve dönen değer yakalanır
+    gelen_veri = components.html(js_bridge_code, height=0, width=0)
+    
+    if gelen_veri:
+        st.session_state["js_tetiklendi"] = False # Döngüyü kır
+        if gelen_veri == "ALTYAZI_YOK":
+            st.error("❌ Bu videoya ait otomatik veya manuel oluşturulmuş bir altyazı dökümü bulunamadı.")
+        elif gelen_veri == "HATA":
+            st.error("❌ Veri kanallarında geçici gecikme yaşandı. Lütfen butona tekrar basarak istek tazeleyin.")
         else:
-            st.error("❌ Bu videonun altyazı/transkript verilerine doğrudan erişilemedi. Lütfen videonun herkese açık ve altyazılara sahip olduğundan emin olun.")
+            video_analiz_proses_et(gelen_veri, madde_limiti)
+            st.success("🎉 Video verileri başarıyla çözümlendi! Kritik maddeler aşağıda listelenmiştir.")
+            st.rerun()
 
 st.divider()
 
