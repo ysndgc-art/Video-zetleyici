@@ -129,91 +129,56 @@ st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
-# Tarayıcıdan gelen transkript verisini yakala ve kontrol et
-query_params = st.query_params
-if "transcript_data" in query_params:
-    gelen_transkript = query_params["transcript_data"]
-    if len(gelen_transkript.strip()) > 10:
-        st.session_state["gecici_transkript"] = gelen_transkript
-    # URL kirliliğini önlemek için parametreyi temizle
-    st.query_params.clear()
-
 st.subheader("📺 1. Mod: YouTube Video Analizi")
 video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
 
 if video_linki.strip():
     v_id = youtube_id_bul_kesin(video_linki)
     
-    # 🔒 REAKTİF TARAYICI PIPELINE (QUERY PARAMETERS BRIDGE)
+    # 🔒 ARKA PLAN BAĞLANTI DENEMESİ VE OTOMATİK DÜŞÜŞ SİSTEMİ
     js_bridge_html = f"""
-    <div id="status-box" style="font-family:sans-serif; background-color:#e8f5e9; padding:12px; border-radius:8px; color:#2e7d32; font-size:14px; font-weight:bold;">
-        🔄 Yerel ağ geçidi aktif. Video veri katmanı çözülüyor...
+    <div id="status-box" style="font-family:sans-serif; background-color:#fff3e0; padding:12px; border-radius:8px; color:#e65100; font-size:14px;">
+        💡 Bulut API korumaları nedeniyle otomatik aktarım kısıtlandı. Kesintisiz B Planı Asistanı aktif hale getirildi.
     </div>
     <script>
-    async function tarayiciUzerindenCek() {{
-        const vId = "{v_id}";
-        const statusBox = document.getElementById("status-box");
+    async function otomatikDene() {{
         try {{
-            // Doğrudan kullanıcının IP'si üzerinden engelsiz resmi manifesto çağrısı
-            const targetUrl = 'https://v0.lat' + vId;
-            const response = await fetch(targetUrl);
-            const data = await response.json();
-            
-            let tamMetin = "";
-            if (Array.isArray(data)) {{
-                tamMetin = data.map(item => item.text || "").join(" ");
-            }} else if (data && data.transcript) {{
-                tamMetin = data.transcript;
+            const res = await fetch('https://v0.lat' + "{v_id}");
+            const data = await res.json();
+            let tamText = Array.isArray(data) ? data.map(i => i.text || "").join(" ") : (data.transcript || "");
+            if (tamText.length > 20) {{
+                var tx = window.parent.document.querySelector('textarea[aria-label="Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:"]');
+                if (tx) {{
+                    tx.value = tamText;
+                    tx.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    document.getElementById("status-box").innerHTML = "🎉 Video verisi otomatik yakalandı! Aşağıdan analiz edebilirsiniz.";
+                    document.getElementById("status-box").style.backgroundColor = "#e8f5e9";
+                    document.getElementById("status-box").style.color = "#2e7d32";
+                }}
             }}
-            
-            if (tamMetin.trim().length > 20) {{
-                statusBox.innerHTML = "✅ Veri çözüldü! Sayfa yenileniyor, lütfen bekleyin...";
-                
-                // Güvenli Köprü: Veriyi Streamlit URL parametrelerine basarak sunucuya fırlatır ve sayfayı tetikler
-                const yeniUrl = window.parent.location.origin + window.parent.location.pathname + "?transcript_data=" + encodeURIComponent(tamMetin.trim());
-                window.parent.location.href = yeniUrl;
-            }} else {{
-                statusBox.innerHTML = "💡 Doğrudan transkript bulunamadı. Lütfen metni aşağıdaki alana kopyalayarak analizi tamamlayın.";
-                statusBox.style.backgroundColor = "#fff3e0";
-                statusBox.style.color = "#e65100";
-            }}
-        }} catch(e) {{
-            statusBox.innerHTML = "💡 Ağ geçidi yanıt vermedi. Lütfen metni aşağıdaki alana kopyalayarak analizi tamamlayın.";
-            statusBox.style.backgroundColor = "#fff3e0";
-            statusBox.style.color = "#e65100";
-        }}
+        }} catch(e) {{}}
     }}
-    setTimeout(tarayiciUzerindenCek, 800);
+    setTimeout(otomatikDene, 500);
     </script>
     """
-    components.html(js_bridge_html, height=65)
-
-# Eğer tarayıcı köprüsü veriyi başarıyla getirdiyse işleme al
-if "gecici_transkript" in st.session_state and st.session_state["gecici_transkript"]:
-    ham_veri = st.session_state["gecici_transkript"]
-    st.session_state["gecici_transkript"] = None  # Döngü önlemek için temizle
+    components.html(js_bridge_html, height=50)
     
-    ham_maddeler = yerel_mantik_ozetleyici(ham_veri, madde_sayisi=madde_limiti)
-    ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
-    simdi = datetime.now()
-    veri_paketi = {
-        "tarih": simdi.strftime("%d.%m.%Y"), 
-        "saat": simdi.strftime("%H:%M:%S"), 
-        "metin": ham_veri, 
-        "ozet": ozet_maddeleri
-    }
-    gecmis_ekle(veri_paketi)
-    st.session_state["aktif_ozet"] = veri_paketi
-    st.success("🎉 Video verileri başarıyla çözümlendi!")
+    # Şık ve Açıklayıcı Manuel Kılavuz Alanı
+    st.info("💡 **Otomatik veri çekme engellendiğinde 10 saniyede Manuel Çözüm:**")
+    st.markdown("""
+    1. Videoyu yeni sekmede açın, video altındaki **"... Dahası"** (More) butonuna tıklayıp **"Metni Göster"** (Show Transcript) deyin.
+    2. Sağda açılan paneldeki tüm konuşmaları `CTRL + A` ve `CTRL + C` ile kopyalayın.
+    3. Kopyaladığınız metni aşağıdaki **2. Mod** alanına yapıştırıp **Metni Analiz Et** butonuna tıklayın.
+    """)
 
 st.divider()
 
-st.subheader("📝 2. Mod: Doğrudan Metin Analizi")
+st.subheader("📝 2. Mod: Doğrudan Metin Analizi / Transkript Alanı")
 girilen_metin = st.text_area("Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:", height=150, key="main_text_box")
 
 if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
     if not girilen_metin.strip():
-        st.warning("Lütfen analiz edilecek bir metin girin.")
+        st.warning("Lütfen analiz edilecek metni veya kopyaladığınız transkripti buraya yapıştırın.")
     else:
         ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti)
         ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler]
