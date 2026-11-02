@@ -7,3 +7,4 @@ openai
 SpeechRecognition
 pydub
 google-api-python-client
+beautifulsoup4
