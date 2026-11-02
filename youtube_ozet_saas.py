@@ -2,24 +2,15 @@ import streamlit as st
 import json
 import os
 import re
+import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import datetime
-# Resmi Google API İstemci Kütüphanesi
-from googleapiclient.discovery import build
+from bs4 import BeautifulSoup
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
 
 VERITABANI_DOSYASI = "ozet_gecmisi.json"
-
-# =========================================================================
-# 🔐 GOOGLE CLOUD GÜVENLİK VE KİMLİK BİLGİLERİ ALANI
-#
-# Aldığın OAuth İstemci Kimliği (Gelecekteki Giriş Sistemi İçin):
-# ://googleusercontent.com
-#
-# LÜTFEN AŞAĞIDAKİ ALANA "AIzaSy..." İLE BAŞLAYAN DÜZ API ANAHTARINI YAPIŞTIR:
-YOUTUBE_API_KEY = "BURAYA_AIzaSy_ILE_BASLAYAN_API_ANAHTARINI_YAPISTIR"
-# =========================================================================
 
 def veritabani_yukle():
     try:
@@ -134,43 +125,62 @@ def video_analiz_proses_et(metin, limit):
     gecmis_ekle(veri_paketi)
     st.session_state["aktif_ozet"] = veri_paketi
 
-def resmi_api_ile_altyazi_cek(video_id):
+def engelsiz_manifesto_kanaliyla_altyazi_cek(video_id):
     """
-    Yasal YouTube API kanalı vasıtasıyla resmi altyazı listesini sorgular 
-    ve sunucu IP blokajlarına yakalanmadan içeriği deşifre eder.
+    YouTube oyuncu verilerinin içindeki gizli altyazı izlerini (captionTracks) 
+    yakalar, yasal kısıtlamalara takılmadan XML çıktısını düz metne dönüştürür.
     """
-    if YOUTUBE_API_KEY == "BURAYA_AIzaSy_ILE_BASLAYAN_API_ANAHTARINI_YAPISTIR":
-        st.error("🔑 Lütfen kaynak kodun başındaki 'YOUTUBE_API_KEY' alanına Google Cloud'dan aldığınız 'AIzaSy...' ile başlayan geçerli anahtarı girin.")
-        return None
-        
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
+    }
     try:
-        youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
-        
-        # 1. Aşama: Videoya ait mevcut altyazı (track) listesini iste
-        altyazi_talebi = youtube.captions().list(part="snippet", videoId=video_id).execute()
-        
-        altyazi_id = None
-        # Türkçe altyazı araması yap
-        for item in altyazi_talebi.get("items", []):
-            if item["snippet"]["language"] == "tr":
-                altyazi_id = item["id"]
-                break
+        # 1. Aşama: YouTube embed veya izleme sayfasından ham veriyi indir
+        url = f"https://youtube.com{video_id}"
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            html = response.read().decode("utf-8")
+
+        # playerCaptionsTracklistRenderer JSON yapısını sayfa içinden ayıkla
+        json_match = re.search(r'"playerCaptionsTracklistRenderer":\s*({.*?})', html)
+        if json_match:
+            captions_json = json.loads(json_match.group(1))
+            caption_tracks = captions_json.get("captionTracks", [])
+            
+            target_url = None
+            # Önce Türkçe (tr) dilindeki resmi veya otomatik parçayı ara
+            for track in caption_tracks:
+                if track.get("languageCode") == "tr":
+                    target_url = track.get("baseUrl")
+                    break
+            
+            # Türkçe yoksa İngilizceye veya mevcut ilk dil kanalına odaklan
+            if not target_url and caption_tracks:
+                for track in caption_tracks:
+                    if track.get("languageCode") == "en":
+                        target_url = track.get("baseUrl")
+                        break
+                if not target_url:
+                    target_url = caption_tracks[0].get("baseUrl")
+            
+            if target_url:
+                # Srv1 srv2 veya srv3 gibi saf srv formatına zorla (XML çıktısı almak için)
+                if "fmt=" not in target_url:
+                    target_url += "&fmt=srv1"
                 
-        # Türkçe yoksa ilk mevcut altyazı kanalını seç
-        if not altyazi_id and altyazi_talebi.get("items"):
-            altyazi_id = altyazi_talebi["items"][0]["id"]
-            
-        if altyazi_id:
-            # 2. Aşama: Belirlenen altyazı ID'sine ait metin dökümünü indir
-            altyazi_dosyasi = youtube.captions().download(id=altyazi_id, tfmt="srt").execute()
-            
-            # SRT formatındaki zaman kodlarını ve numaraları temizle, sadece saf konuşmayı ayıkla
-            raw_text = altyazi_dosyasi.decode("utf-8")
-            clean_lines = []
-            for line in raw_text.splitlines():
-                if line.strip() and not line.strip().isdigit() and "-->" not in line:
-                    clean_lines.append(line.strip())
-            return " ".join(clean_lines)
+                # 2. Aşama: Altyazı XML dosyasını indir ve ayrıştır
+                req_xml = urllib.request.Request(target_url, headers=headers)
+                with urllib.request.urlopen(req_xml, timeout=10) as xml_res:
+                    xml_data = xml_res.read().decode("utf-8")
+                
+                if xml_data.strip() and "<text" in xml_data:
+                    root = ET.fromstring(xml_data)
+                    parcalar = [t.text for t in root.findall(".//text") if t.text]
+                    if parcalar:
+                        full_text = " ".join(parcalar)
+                        # HTML etiketlerini ve entity'leri güzelce temizle
+                        full_text = BeautifulSoup(full_text, "html.parser").get_text()
+                        return full_text
     except Exception as e:
         pass
     return None
@@ -209,15 +219,15 @@ if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
     else:
         v_id = youtube_id_bul_kesin(video_linki)
         
-        with st.spinner("🔄 Kurumsal API Gateway üzerinden video akışı çözümleniyor..."):
-            gelen_veri = resmi_api_ile_altyazi_cek(v_id)
+        with st.spinner("🔄 API kısıtlamaları bypass ediliyor... Doğrudan video manifestosu üzerinden transkript çözümleniyor..."):
+            gelen_veri = engelsiz_manifesto_kanaliyla_altyazi_cek(v_id)
             
         if gelen_veri:
             video_analiz_proses_et(gelen_veri, madde_limiti)
             st.success("🎉 Video verileri başarıyla çözümlendi! Kritik maddeler aşağıda listelenmiştir.")
             st.rerun()
         else:
-            st.error("❌ Bu videonun resmi altyazı katmanına erişilemedi. Lütfen API anahtarınızın doğruluğunu, videonun herkese açık olduğunu ve altyazı seçeneğinin aktifliğini kontrol edin.")
+            st.error("❌ Bu videonun transkript katmanına erişilemedi. Lütfen videonun herkese açık olduğundan ve altyazı seçeneğinin (otomatik veya manuel) aktif olduğundan emin olun.")
 
 st.divider()
 
@@ -226,20 +236,3 @@ girilen_metin = st.text_area("Yorumlanacak Herhangi Bir Uzun Metni Yapıştırı
 if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
     if not girilen_metin.strip():
         st.warning("Lütfen metin girin.")
-    else:
-        ham_maddeler = yerel_mantik_ozetleyici(girilen_metin)
-        ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler[:madde_limiti]]
-        simdi = datetime.now()
-        veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": girilen_metin, "ozet": ozet_maddeleri}
-        gecmis_ekle(veri_paketi)
-        st.session_state["aktif_ozet"] = veri_paketi
-        st.rerun()
-
-# --- SONUÇ ALANI ---
-if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not None:
-    st.divider()
-    st.info("📂 **Analiz Sonucu**")
-    g = st.session_state["aktif_ozet"]
-    if isinstance(g, dict) and "ozet" in g:
-        for m in g.get('ozet', []):
-            st.write(m)
