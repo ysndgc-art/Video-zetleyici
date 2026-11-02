@@ -4,8 +4,9 @@ import os
 import re
 import urllib.request
 import urllib.parse
-import xml.etree.ElementTree
 from datetime import datetime
+import yt_dlp
+from openai import OpenAI
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -118,32 +119,46 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5, dil="tr"):
                 sonuc.append(ham_cumle)
     return sonuc
 
-def sunucusuz_saf_altyazi_motoru(video_id):
+def whisper_ile_ses_analizi(video_id, api_anahtari):
+    if not api_anahtari:
+        st.error("❌ OpenAI API Key girmeden video analizi yapılamaz. Lütfen sol menüden anahtarınızı girin.")
+        return None
+    
+    hedef_dosya = f"audio_{video_id}.m4a"
+    
+    # yt-dlp için Streamlit Cloud'u yormayacak ultra hafif ayarlar
+    ydl_opts = {
+        'format': 'm4a/bestaudio/best',
+        'outtmpl': f"audio_{video_id}.%(ext)s",
+        'quiet': True,
+        'no_warnings': True,
+        'noprogress': True,
+        'socket_timeout': 30,
+        'retries': 3,
+        'extractor_args': {'youtube': {'clients': ['tv', 'android']}} # IP Engelini Aşmak İçin Mobil/TV Taklidi
+    }
+    
     try:
-        url = f"https://google.com{video_id}&lang=tr"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-        with urllib.request.urlopen(req, timeout=12) as response:
-            xml_data = response.read().decode('utf-8')
-        if xml_data.strip() and "<text" in xml_data:
-            root = xml.etree.ElementTree.fromstring(xml_data)
-            metin_parcalari = [text.text for text in root.findall('.//text') if text.text]
-            if metin_parcalari:
-                return " ".join(metin_parcalari), "tr"
-    except:
-        pass
-    try:
-        url_en = f"https://google.com{video_id}&lang=en"
-        req_en = urllib.request.Request(url_en, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req_en, timeout=12) as response_en:
-            xml_data_en = response_en.read().decode('utf-8')
-        if xml_data_en.strip() and "<text" in xml_data_en:
-            root_en = xml.etree.ElementTree.fromstring(xml_data_en)
-            metin_parcalari_en = [text.text for text in root_en.findall('.//text') if text.text]
-            if metin_parcalari_en:
-                return " ".join(metin_parcalari_en), "en"
-    except:
-        pass
-    return None, "tr"
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([f"https://youtube.com{video_id}"])
+            
+        if os.path.exists(hedef_dosya):
+            client = OpenAI(api_key=api_anahtari)
+            with open(hedef_dosya, "rb") as f:
+                transcription = client.audio.transcriptions.create(
+                    model="whisper-1", 
+                    file=f
+                )
+            # Geçici dosyayı temizle
+            try: os.remove(hedef_dosya)
+            except: pass
+            return transcription.text
+    except Exception as e:
+        st.error(f"🚨 Ses Çözme Hatası: {str(e)}")
+        if os.path.exists(hedef_dosya):
+            try: os.remove(hedef_dosya)
+            except: pass
+    return None
 
 def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
     txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {tarih} - {saat}\n"
@@ -163,6 +178,11 @@ if isinstance(gecmis_listesi, list) and gecmis_listesi:
 else:
     st.sidebar.info("Henüz geçmiş analiz bulunmuyor.")
 
+st.sidebar.divider()
+st.sidebar.title("🔑 API Ayarları")
+env_key = os.getenv("OPENAI_API_KEY", "")
+openai_key = st.sidebar.text_input("OpenAI API Key:", value=env_key, type="password", placeholder="sk-proj-...")
+
 # --- ANA SAYFA PANELİ ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
 st.write("Gelişmiş İstatistik Paneli ve Kolay Dışa Aktarma Sistemi")
@@ -170,21 +190,21 @@ st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
-# ASLA KAYBOLMAYAN VE JAVASCRIPT BAĞIMLILIĞI OLMAYAN SABİT FORM YAPISI
+# MODLAR
 st.subheader("📺 1. Mod: YouTube Video Analizi")
 video_linki = st.text_input("YouTube Linki veya Kodu:", value="", placeholder="https://youtube.com...", key="main_yt_box")
-if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
+if st.button("🚀 Videoyu İndir ve Yapay Zekayla Yorumla", key="main_yt_btn"):
     if not video_linki.strip():
         st.warning("Lütfen bir YouTube linki girin.")
     else:
         v_id = youtube_id_bul_kesin(video_linki)
-        st.write("📥 Google altyazı havuzundan veriler çekiliyor...")
-        metin, altyazi_dili = sunucusuz_saf_altyazi_motoru(v_id)
+        st.info("📥 Sunucu IP engeli Whisper motoruyla aşılıyor. Ses akışı analiz ediliyor (Bu işlem videonun uzunluğuna göre biraz sürebilir)...")
+        metin = whisper_ile_ses_analizi(v_id, openai_key)
         if not metin:
-            st.error("❌ Bu videoda Türkçe veya İngilizce altyazı havuzu bulunamadı veya video gizli.")
+            st.error("❌ Ses dosyası çözülemedi. Lütfen API anahtarınızı kontrol edin veya videonun herkese açık olduğundan emin olun.")
         else:
-            st.write("🤖 Yapay zeka maddeleri çıkarıyor...")
-            ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil=altyazi_dili)
+            st.success("🎉 Ses başarıyla metne dönüştürüldü! Maddeler çıkarılıyor...")
+            ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil="tr")
             ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
             simdi = datetime.now()
             veri_paketi = {"tarih": simdi.strftime("%d.%m.%Y"), "saat": simdi.strftime("%H:%M:%S"), "metin": metin, "ozet": ozet_maddeleri}
