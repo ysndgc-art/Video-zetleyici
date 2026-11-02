@@ -2,8 +2,8 @@ import streamlit as st
 import json
 import os
 import re
+import urllib.request
 from datetime import datetime
-import streamlit.components.v1 as components
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -112,7 +112,6 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
     return sonuc
 
 def video_analiz_proses_et(metin, limit):
-    # Tip ve değer güvenliği kontrolü
     if not isinstance(metin, str) or len(metin.strip()) < 15:
         st.error("❌ Belirtilen videoya ait transkript akışı alınamadı. Başka bir video linki deneyebilirsiniz.")
         return
@@ -124,18 +123,51 @@ def video_analiz_proses_et(metin, limit):
     gecmis_ekle(veri_paketi)
     st.session_state["aktif_ozet"] = veri_paketi
 
+def proxy_uzerinden_transkript_cek(video_id):
+    """
+    Bulut IP engellerini aşmak için küresel istek dağıtıcı proxy havuzlarını
+    senkron Python mimarisiyle doğrudan sorgular.
+    """
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    
+    # 1. Aşama: Küresel proxy havuzu üzerinden bağımsız döküm motorunu sorgula
+    try:
+        hedef_url = f"https://youtubetranscript.com{video_id}"
+        proxy_api = f"https://allorigins.win{urllib.parse.quote(hedef_url)}"
+        
+        req = urllib.request.Request(proxy_api, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            ham_json = json.loads(response.read().decode("utf-8"))
+            xml_icerik = ham_json.get("contents", "")
+            
+            if xml_icerik and "<text" in xml_icerik:
+                import xml.etree.ElementTree as ET
+                root = ET.fromstring(xml_icerik)
+                parcalar = [t.text for t in root.findall(".//text") if t.text]
+                if parcalar:
+                    return " ".join(parcalar)
+    except:
+        pass
+
+    # 2. Aşama: Alternatif CDN döküm kanalı (Yedek hat)
+    try:
+        yedek_url = f"https://bhawanigarg.com{video_id}"
+        req_y = urllib.request.Request(yedek_url, headers=headers)
+        with urllib.request.urlopen(req_y, timeout=8) as response_y:
+            veri_y = json.loads(response_y.read().decode("utf-8"))
+            if veri_y.get("success") and veri_y.get("transcript"):
+                return veri_y.get("transcript")
+    except:
+        pass
+        
+    return None
+
 def rapor_formatlarini_uret(tarih, saat, maddeler, baslik_url=""):
     txt_cikisi = f"--- AI ANALIZ RAPORU ---\nTarih: {tarih} - {saat}\n"
     if baslik_url: txt_cikisi += f"Kaynak: {baslik_url}\n"
     txt_cikisi += "\nKritik Maddeler:\n"
     for m in maddeler: txt_cikisi += f"{m}\n"
     return txt_cikisi
-
-# --- SESSION STATE INITIALIZATION ---
-if "js_tetiklendi" not in st.session_state:
-    st.session_state["js_tetiklendi"] = False
-if "mevcut_video_id" not in st.session_state:
-    st.session_state["mevcut_video_id"] = ""
 
 # --- SIDEBAR ---
 st.sidebar.title("📜 Analiz Geçmişiniz")
@@ -156,56 +188,24 @@ st.divider()
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
 st.subheader("📺 1. Mod: YouTube Video Analizi")
-video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
+video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://www.youtube.com/watch?v=...", key="main_yt_box")
 
-if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn") and video_linki.strip():
-    v_id = youtube_id_bul_kesin(video_linki)
-    st.session_state["mevcut_video_id"] = v_id
-    st.session_state["js_tetiklendi"] = True
-    st.info("🔄 Güvenli tarayıcı kanalı üzerinden video dökümü çözümleniyor, lütfen bekleyin...")
-
-if st.session_state["js_tetiklendi"]:
-    js_bridge_code = f"""
-    <script>
-    async function istemciUzerindenAltyaziGetir() {{
-        const videoId = "{st.session_state['mevcut_video_id']}";
-        try {{
-            const proxyUrl = 'https://allorigins.win' + encodeURIComponent('https://youtubetranscript.com' + videoId);
-            const response = await fetch(proxyUrl);
-            const data = await response.json();
+if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
+    if not video_linki.strip():
+        st.warning("Lütfen bir YouTube linki girin.")
+    else:
+        v_id = youtube_id_bul_kesin(video_linki)
+        
+        # Streamlit spinner ile kullanıcıya durum bildirimi verilir, donma algısı kırılır
+        with st.spinner("🔄 Güvenli tünel API kanalları üzerinden video dökümü analiz ediliyor, lütfen bekleyin..."):
+            gelen_veri = proxy_uzerinden_transkript_cek(v_id)
             
-            if (data.contents && data.contents.includes('<text')) {{
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(data.contents, "text/xml");
-                const lines = xmlDoc.getElementsByTagName("text");
-                let tamMetin = "";
-                for (let i = 0; i < lines.length; i++) {{
-                    tamMetin += lines[i].textContent + " ";
-                }}
-                window.parent.postMessage({{type: 'streamlit:setComponentValue', value: tamMetin}}, '*');
-            }} else {{
-                window.parent.postMessage({{type: 'streamlit:setComponentValue', value: 'ALTYAZI_YOK'}}, '*');
-            }}
-        }} catch(e) {{
-            window.parent.postMessage({{type: 'streamlit:setComponentValue', value: 'HATA'}}, '*');
-        }}
-    }}
-    istemciUzerindenAltyaziGetir();
-    </script>
-    """
-    gelen_veri = components.html(js_bridge_code, height=0, width=0)
-    
-    # Gelen verinin string (metin) tipinde olduğundan emin oluyoruz
-    if gelen_veri and isinstance(gelen_veri, str):
-        st.session_state["js_tetiklendi"] = False
-        if gelen_veri == "ALTYAZI_YOK":
-            st.error("❌ Bu videoya ait otomatik veya manuel oluşturulmuş bir altyazı dökümü bulunamadı.")
-        elif gelen_veri == "HATA":
-            st.error("❌ Veri kanallarında geçici gecikme yaşandı. Lütfen butona tekrar basarak istek tazeleyin.")
-        else:
+        if gelen_veri:
             video_analiz_proses_et(gelen_veri, madde_limiti)
             st.success("🎉 Video verileri başarıyla çözümlendi! Kritik maddeler aşağıda listelenmiştir.")
             st.rerun()
+        else:
+            st.error("❌ Bu videonun transkript verilerine doğrudan erişilemedi. Lütfen videonen herkese açık olduğundan veya altyazı barındırdığından emin olun.")
 
 st.divider()
 
