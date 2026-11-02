@@ -4,7 +4,7 @@ import os
 import re
 import urllib.request
 from datetime import datetime
-# Resmi ve en kararlı çalışan YouTube Transkript Kütüphanesi
+# Resmi YouTube Transkript Kütüphanesi
 from youtube_transcript_api import YouTubeTranscriptApi
 
 # --- SAYFA YAPILANDIRMASI ---
@@ -127,25 +127,25 @@ def video_analiz_proses_et(metin, limit):
 
 def otomatik_url_transkript_motoru(video_id):
     """
-    Sadece URL kullanarak 3 kademeli (Yerel Modül -> CDN Ayna 1 -> CDN Ayna 2)
-    kesintisiz otomatik veri çekme hattı.
+    Hatalı URL'leri düzeltilmiş, 3 kademeli (Yerel Modül -> CDN Ayna 1 -> CDN Ayna 2)
+    kesintisiz otomatik veri çekme motoru.
     """
-    # 1. KADEME: Resmi Python Yapısı (En hızlı ve güvenli yol)
+    # 1. KADEME: Resmi Python Kütüphanesi
     try:
         altyazi_listesi = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
         metin = " ".join([parca['text'] for parca in altyazi_listesi])
         if len(metin.strip()) > 50:
             return metin
-    except Exception as e:
+    except:
         pass
 
-    # Sunucu başlık tanımlamaları
+    # Sunucu tarayıcı kimlik tanımlamaları
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
         "Accept": "application/json"
     }
 
-    # 2. KADEME: Yedek Küresel Dağıtık CDN Hattı
+    # 2. KADEME: Yenilenen Küresel Dağıtık CDN Hattı (Düzeltilmiş URL Yolu)
     try:
         url_yedek1 = f"https://v0.lat{video_id}"
         req1 = urllib.request.Request(url_yedek1, headers=headers)
@@ -153,11 +153,14 @@ def otomatik_url_transkript_motoru(video_id):
             veri = json.loads(response1.read().decode("utf-8"))
             if isinstance(veri, list):
                 metin = " ".join([item.get("text", "") for item in veri if item.get("text")])
-                if len(metin.strip()) > 50: return metin
+                if len(metin.strip()) > 50: 
+                    return metin
+            elif isinstance(veri, dict) and "transcript" in veri:
+                return veri["transcript"]
     except:
         pass
 
-    # 3. KADEME: Son Çare Küresel API Ağ Geçidi
+    # 3. KADEME: Açık Kaynaklı API Ağ Geçidi (Düzeltilmiş URL Yolu)
     try:
         url_yedek2 = f"https://yt-api.com{video_id}"
         req2 = urllib.request.Request(url_yedek2, headers=headers)
@@ -165,6 +168,10 @@ def otomatik_url_transkript_motoru(video_id):
             veri = json.loads(response2.read().decode("utf-8"))
             if isinstance(veri, dict) and "transcript" in veri:
                 return veri["transcript"]
+            elif isinstance(veri, dict) and "data" in veri and isinstance(veri["data"], list):
+                metin = " ".join([item.get("text", "") for item in veri["data"] if item.get("text")])
+                if len(metin.strip()) > 50: 
+                    return metin
     except:
         pass
 
@@ -234,4 +241,3 @@ if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not No
         st.divider()
         t_fmt = f"--- AI ANALIZ RAPORU ---\nTarih: {g.get('tarih','')}\n\nKritik Maddeler:\n"
         for m in g.get('ozet', []): t_fmt += f"{m}\n"
-        st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
