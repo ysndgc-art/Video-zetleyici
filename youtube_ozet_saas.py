@@ -259,4 +259,5 @@ st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
-# SABİT YOUTUBE LINK ALANI (Her Zaman Görünür)
+# ASLA KAYBOLMAYAN SABİT FORM YAPISI
+st.subheader("📺 1. Mod: YouTube Video Analizi")
