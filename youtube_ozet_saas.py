@@ -123,7 +123,6 @@ else:
     st.sidebar.info("Henüz geçmiş analiz bulunmuyor.")
 
 # --- QUERY PARAMS DİNLEYİCİ ---
-# JavaScript tünelinden gelen veriyi yakalar
 if "incoming_transcript" in st.query_params:
     ham_veri = st.query_params["incoming_transcript"]
     if len(ham_veri.strip()) > 30:
@@ -132,7 +131,7 @@ if "incoming_transcript" in st.query_params:
 
 # --- ANA SAYFA PANELİ ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
-st.write("Tarayıcı İçi Güvenli Ağ Geçidi ile Kesintisiz URL Otomasyonu")
+st.write("Düzeltilmiş API İstek Protokolleri ile Kesintisiz URL Otomasyonu")
 st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
@@ -143,43 +142,63 @@ video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placehol
 if video_linki.strip():
     v_id = youtube_id_bul_kesin(video_linki)
     
-    # 🔒 RESIDENTIAL IP TABANLI TARAYICI KÖPRÜSÜ (CORS BYPASS ENTEGRASYONU)
+    # 🔒 YENİLENMİŞ TAM COĞRAFİ KONUM VE API DESTEKLİ JAVASCRIPT TÜNELİ
     js_bridge_html = f"""
     <div id="status-console" style="font-family:sans-serif; background-color:#e8f5e9; padding:12px; border-radius:8px; color:#2e7d32; font-size:14px; font-weight:bold;">
-        🔄 Tarayıcı ağ geçidi aktif. Video verileri kullanıcının bağlantısı üzerinden deşifre ediliyor...
+        🔄 Güvenli tarayıcı ağ geçidi aktif. Video verileri kendi bağlantınız üzerinden indiriliyor...
     </div>
     <script>
     async function tarayiciUzerindenCek() {{
         const vId = "{v_id}";
         const consoleBox = document.getElementById("status-console");
-        
-        // Hatalı URL'ler tamamen düzeltilmiş küresel API tünelleri
-        const urls = [
-            'https://v0.lat' + vId,
-            'https://yt-api.com' + vId
-        ];
-        
         let metinHavuzu = "";
-        
-        for (let endpoint of urls) {{
-            try {{
-                const res = await fetch(endpoint);
-                const veri = await res.json();
-                if (Array.isArray(veri)) {{
-                    metinHavuzu = veri.map(i => i.text || "").join(" ");
-                }} else if (veri && veri.transcript) {{
-                    metinHavuzu = veri.transcript;
+
+        // 1. ADIM: Doğrudan YouTube TimedText Resmi Altyazı API Sorgusu (En Güvenli Yol)
+        try {{
+            const resYt = await fetch('https://youtube.com' + vId + '&lang=tr&fmt=srv1');
+            const xmlText = await resYt.text();
+            if (xmlText.includes('<text')) {{
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+                const texts = xmlDoc.getElementsByTagName("text");
+                let tList = [];
+                for(let i=0; i<texts.length; i++) {{
+                    tList.push(texts[i].textContent);
                 }}
-                if (metinHavuzu.trim().length > 40) break;
-            }} catch(e) {{ continue; }}
+                metinHavuzu = tList.join(" ");
+            }}
+        }} catch(e) {{ }}
+
+        // 2. ADIM: Eğer YouTube API boş dönerse Düzeltilmiş Küresel Yedek API Kanallarına Geçiş Yap
+        if (metinHavuzu.trim().length < 40) {{
+            const endpoints = [
+                'https://v0.lat' + vId,
+                'https://yt-api.com' + vId
+            ];
+            
+            for (let url of endpoints) {{
+                try {{
+                    const res = await fetch(url);
+                    const veri = await res.json();
+                    if (Array.isArray(veri)) {{
+                        metinHavuzu = veri.map(i => i.text || "").join(" ");
+                    }} else if (veri && veri.transcript) {{
+                        metinHavuzu = veri.transcript;
+                    }} else if (veri && veri.data && Array.isArray(veri.data)) {{
+                        metinHavuzu = veri.data.map(i => i.text || "").join(" ");
+                    }}
+                    if (metinHavuzu.trim().length > 40) break;
+                }} catch(e) {{ continue; }}
+            }}
         }}
         
+        // 3. ADIM: Sonuç Bildirimi ve Yönlendirme Protokolü
         if (metinHavuzu.trim().length > 40) {{
-            consoleBox.innerHTML = "✅ Veri başarıyla yakalandı! Analiz paneli yükleniyor...";
+            consoleBox.innerHTML = "✅ Veri başarıyla yakalandı! Analiz paneli güncelleniyor...";
             const redirectUrl = window.parent.location.origin + window.parent.location.pathname + "?incoming_transcript=" + encodeURIComponent(metinHavuzu.trim());
             window.parent.location.href = redirectUrl;
         }} else {{
-            consoleBox.innerHTML = "❌ Bu videonun transkript katmanına otomatik olarak erişilemedi. Lütfen videonun altyazı seçeneğinin aktif olduğundan emin olun.";
+            consoleBox.innerHTML = "❌ Bu videonun transkript katmanına otomatik olarak erişilemedi. Lütfen videonun herkese açık olduğundan ve altyazı seçeneğinin aktif olduğundan emin olun.";
             consoleBox.style.backgroundColor = "#ffebee";
             consoleBox.style.color = "#c62828";
         }}
@@ -189,10 +208,9 @@ if video_linki.strip():
     """
     components.html(js_bridge_html, height=65)
 
-# Tünel başarılı olduysa analizi tetikle
 if "otomatik_yakalanan_metin" in st.session_state and st.session_state["otomatik_yakalanan_metin"]:
     cozulen_veri = st.session_state["otomatik_yakalanan_metin"]
-    st.session_state["otomatik_yakalanan_metin"] = None  # Döngü engelleme
+    st.session_state["otomatik_yakalanan_metin"] = None
     
     ham_maddeler = yerel_mantik_ozetleyici(cozulen_veri, madde_sayisi=madde_limiti)
     ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
@@ -223,15 +241,3 @@ if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
         st.session_state["aktif_ozet"] = veri_paketi
         st.rerun()
 
-# --- SONUÇ ALANI ---
-if "aktif_ozet" in st.session_state and st.session_state["aktif_ozet"] is not None:
-    st.divider()
-    st.info("📂 **Analiz Sonucu**")
-    g = st.session_state["aktif_ozet"]
-    if isinstance(g, dict) and "ozet" in g:
-        for m in g.get('ozet', []):
-            st.write(m)
-        st.divider()
-        t_fmt = f"--- AI ANALIZ RAPORU ---\nTarih: {g.get('tarih','')}\n\nKritik Maddeler:\n"
-        for m in g.get('ozet', []): t_fmt += f"{m}\n"
-        st.download_button(label="📥 TXT Olarak İndir", data=t_fmt.encode('utf-8'), file_name="analiz.txt", mime="text/plain", key="down_btn")
