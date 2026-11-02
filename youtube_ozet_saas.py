@@ -2,8 +2,8 @@ import streamlit as st
 import json
 import os
 import re
+import urllib.request
 from datetime import datetime
-import streamlit.components.v1 as components
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="AI Video & Metin Analiz SaaS", page_icon="📺", layout="wide")
@@ -111,6 +111,52 @@ def yerel_mantik_ozetleyici(metin, madde_sayisi=5):
                 sonuc.append(ham_cumle)
     return sonuc
 
+def sunucu_tarafli_kesintisiz_transkript_motoru(video_id):
+    """
+    Tarayıcı CORS engellerini tamamen bypass eden, istekleri Python sunucusu 
+    üzerinden tünelleyerek kararlı şekilde çeken kesintisiz deşifre motoru.
+    """
+    # Sunucu kimliği taklidi (Engellemeleri aşmak için üst düzey başlıklar)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+        "Origin": "https://youtube.com",
+        "Referer": "https://youtube.com/"
+    }
+    
+    # Küresel çapta en kararlı çalışan, CORS'a takılmayan yedekli API uç noktaları
+    endpoints = [
+        f"https://v0.lat{video_id}",
+        f"https://yt-api.com{video_id}"
+    ]
+    
+    for url in endpoints:
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            # Timeout süresini 8 saniye yaparak yavaş yanıt veren proxy'leri emniyete alıyoruz
+            with urllib.request.urlopen(req, timeout=8) as response:
+                ham_veri = response.read().decode("utf-8")
+                veri = json.loads(ham_veri)
+                
+                # API Formatı 1: Liste yapısı (v0.lat formatı)
+                if isinstance(veri, list):
+                    metin = " ".join([item.get("text", "") for item in veri if item.get("text")])
+                    if len(metin.strip()) > 30:
+                        return metin.strip()
+                
+                # API Formatı 2: Obje yapısı (yt-api formatı)
+                elif isinstance(veri, dict):
+                    if "transcript" in veri:
+                        return veri["transcript"].strip()
+                    elif "data" in veri and isinstance(veri["data"], list):
+                        metin = " ".join([item.get("text", "") for item in veri["data"] if item.get("text")])
+                        if len(metin.strip()) > 30:
+                            return metin.strip()
+        except:
+            continue # İlk hat hattında sorun olursa kesintiye uğramadan derhal yedek hatta geç
+            
+    return None
+
 # --- SIDEBAR ---
 st.sidebar.title("📜 Analiz Geçmişiniz")
 veri_havuzu = veritabani_yukle()
@@ -122,91 +168,41 @@ if isinstance(gecmis_listesi, list) and gecmis_listesi:
 else:
     st.sidebar.info("Henüz geçmiş analiz bulunmuyor.")
 
-# --- QUERY PARAMS DİNLEYİCİ ---
-if "incoming_transcript" in st.query_params:
-    ham_veri = st.query_params["incoming_transcript"]
-    if len(ham_veri.strip()) > 30:
-        st.session_state["otomatik_yakalanan_metin"] = ham_veri
-    st.query_params.clear()
-
 # --- ANA SAYFA PANELİ ---
 st.title("📺 AI Akıllı Video & Metin Yorumlayıcı SaaS")
-st.write("Gelişmiş Deşifre Ağ Geçidi ve URL Otomasyonu")
+st.write("Sunucu Tabanlı No-CORS Ağ Geçidi ile Kesintisiz Otomasyon")
 st.divider()
 
 madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, max_value=15, value=5, step=1)
 
 st.subheader("📺 1. Mod: YouTube Video Analizi")
-video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com...", key="main_yt_box")
+video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="https://youtube.com/watch?v=...", key="main_yt_box")
 
-if video_linki.strip():
-    v_id = youtube_id_bul_kesin(video_linki)
-    
-    # 🔒 PREMIUM INDIRME SERVISLERININ AŞIM KANALLARINI KULLANAN JAVASCRIPT MOTORU
-    js_bridge_html = f"""
-    <div id="status-console" style="font-family:sans-serif; background-color:#e8f5e9; padding:12px; border-radius:8px; color:#2e7d32; font-size:14px; font-weight:bold;">
-        🔄 İndirme servisleri köprüsü aktif. Video transkript katmanı çözülüyor...
-    </div>
-    <script>
-    async function tarayiciUzerindenCek() {{
-        const vId = "{v_id}";
-        const consoleBox = document.getElementById("status-console");
-        let metinHavuzu = "";
-
-        // MP3 ve Dönüştürücü sitelerin arka planda veri çekmek için kullandığı en güncel ve kararlı API uç noktaları
-        const endpoints = [
-            'https://v0.lat' + vId,
-            'https://yt-api.com' + vId
-        ];
+if st.button("🚀 Videoyu Saniyeler İçinde Yorumla", key="main_yt_btn"):
+    if not video_linki.strip():
+        st.warning("Lütfen bir YouTube linki girin.")
+    else:
+        v_id = youtube_id_bul_kesin(video_linki)
         
-        for (let url of endpoints) {{
-            try {{
-                const res = await fetch(url);
-                const veri = await res.json();
-                
-                if (Array.isArray(veri)) {{
-                    metinHavuzu = veri.map(i => i.text || "").join(" ");
-                }} else if (veri && veri.transcript) {{
-                    metinHavuzu = veri.transcript;
-                }} else if (veri && veri.data && Array.isArray(veri.data)) {{
-                    metinHavuzu = veri.data.map(i => i.text || "").join(" ");
-                }}
-                
-                if (metinHavuzu.strip().length > 40) break;
-            }} catch(e) {{ continue; }}
-        }}
-        
-        if (metinHavuzu.strip().length > 40) {{
-            consoleBox.innerHTML = "✅ Altyazı katmanı başarıyla deşifre edildi! Analiz başlatılıyor...";
-            const redirectUrl = window.parent.location.origin + window.parent.location.pathname + "?incoming_transcript=" + encodeURIComponent(metinHavuzu.trim());
-            window.parent.location.href = redirectUrl;
-        }} else {{
-            consoleBox.innerHTML = "❌ Bu videonun transkript katmanına otomatik olarak erişilemedi. Lütfen videonun altyazı seçeneğinin aktif olduğundan emin olun.";
-            consoleBox.style.backgroundColor = "#ffebee";
-            consoleBox.style.color = "#c62828";
-        }}
-    }}
-    setTimeout(tarayiciUzerindenCek, 600);
-    </script>
-    """
-    components.html(js_bridge_html, height=65)
-
-if "otomatik_yakalanan_metin" in st.session_state and st.session_state["otomatik_yakalanan_metin"]:
-    cozulen_veri = st.session_state["otomatik_yakalanan_metin"]
-    st.session_state["otomatik_yakalanan_metin"] = None
-    
-    ham_maddeler = yerel_mantik_ozetleyici(cozulen_veri, madde_sayisi=madde_limiti)
-    ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
-    simdi = datetime.now()
-    veri_paketi = {
-        "tarih": simdi.strftime("%d.%m.%Y"), 
-        "saat": simdi.strftime("%H:%M:%S"), 
-        "metin": cozulen_veri, 
-        "ozet": ozet_maddeleri
-    }
-    gecmis_ekle(veri_paketi)
-    st.session_state["aktif_ozet"] = veri_paketi
-    st.rerun()
+        with st.spinner("🔄 CORS engelleri bypass ediliyor... Güvenli sunucu ağ geçidi üzerinden veri indiriliyor..."):
+            gelen_veri = sunucu_tarafli_kesintisiz_transkript_motoru(v_id)
+            
+        if gelen_veri:
+            ham_maddeler = yerel_mantik_ozetleyici(gelen_veri, madde_sayisi=madde_limiti)
+            ozet_maddeleri = [f"📌 {m}" for m in ham_maddeler]
+            simdi = datetime.now()
+            veri_paketi = {
+                "tarih": simdi.strftime("%d.%m.%Y"), 
+                "saat": simdi.strftime("%H:%M:%S"), 
+                "metin": gelen_veri, 
+                "ozet": ozet_maddeleri
+            }
+            gecmis_ekle(veri_paketi)
+            st.session_state["aktif_ozet"] = veri_paketi
+            st.success("🎉 Video verileri sunucu tüneli üzerinden başarıyla çözümlendi!")
+            st.rerun()
+        else:
+            st.error("❌ Bu videonun transkript katmanına otomatik olarak erişilemedi. Lütfen videonun herkese açık olduğundan ve altyazı seçeneğinin aktif olduğundan emin olun.")
 
 st.divider()
 
@@ -214,7 +210,7 @@ st.subheader("📝 2. Mod: Doğrudan Metin Analizi")
 girilen_metin = st.text_area("Yorumlanacak Herhangi Bir Uzun Metni Yapıştırın:", height=150, key="main_text_box")
 if st.button("⚡ Metni Analiz Et", key="main_text_btn"):
     if not girilen_metin.strip():
-        st.warning("Lütfen bir metin girin.")
+        st.warning("Lütfen metin girin.")
     else:
         ham_maddeler = yerel_mantik_ozetleyici(girilen_metin, madde_sayisi=madde_limiti)
         ozet_maddeleri = [f"💡 {m}" for m in ham_maddeler]
