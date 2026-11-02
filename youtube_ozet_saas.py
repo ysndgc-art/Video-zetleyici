@@ -146,39 +146,64 @@ def saf_html_altyazi_kaziyici(video_id):
         pass
     return None, "tr"
 
+def alternatif_ses_indirici_koprusu(video_id, hedef_yol):
+    try:
+        api_url = f"https://vexdh.com{video_id}"
+        req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=20) as response:
+            veri = json.loads(response.read().decode('utf-8'))
+            ses_url = veri.get("audio_url") or veri.get("url")
+            if ses_url:
+                urllib.request.urlretrieve(ses_url, hedef_yol)
+                return True
+    except:
+        pass
+    return False
+
 def whisper_ile_ses_coz(video_id, api_anahtari):
     if not api_anahtari:
+        st.error("❌ OpenAI API anahtarı boş bırakılamaz.")
         return None, "tr"
+    
     gecici_ses_dosyasi = f"temp_{video_id}"
+    indirilen_dosya = f"{gecici_ses_dosyasi}.m4a"
+    
+    st.write("🎵 Ses akışı YouTube sunucularından talep ediliyor...")
     ydl_opts = {
         'format': 'm4a/bestaudio/best',
         'outtmpl': gecici_ses_dosyasi,
         'quiet': True,
         'no_warnings': True,
-        'socket_timeout': 30,
-        'retries': 3
+        'socket_timeout': 20,
+        'retries': 2
     }
+    
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([f"https://youtube.com{video_id}"])
+    except Exception as e:
+        st.warning("⚠️ Sunucu tabanlı yt-dlp engellendi. İstemci taraflı API köprüsü deneniyor...")
+        alternatif_ses_indirici_koprusu(video_id, indirilen_dosya)
         
-        indirilen_dosya = f"{gecici_ses_dosyasi}.m4a"
-        if os.path.exists(indirilen_dosya):
-            client = OpenAI(api_key=api_anahtari)
-            audio_file = open(indirilen_dosya, "rb")
+    if not os.path.exists(indirilen_dosya):
+        st.error("❌ Ses dosyası sunucuya indirilemedi. YouTube IP adresini tamamen kilitledi.")
+        return None, "tr"
+        
+    try:
+        st.write("🚀 Ses dosyası başarıyla alındı. Whisper API ile yazıya dökülüyor...")
+        client = OpenAI(api_key=api_anahtari)
+        with open(indirilen_dosya, "rb") as audio_file:
             transcription = client.audio.transcriptions.create(
                 model="whisper-1", 
                 file=audio_file
             )
-            audio_file.close()
-            try: os.remove(indirilen_dosya)
-            except: pass
-            if transcription.text:
-                return transcription.text, "tr"
-    except:
-        try:
-            if os.path.exists(f"{gecici_ses_dosyasi}.m4a"):
-                os.remove(f"{gecici_ses_dosyasi}.m4a")
+        try: os.remove(indirilen_dosya)
+        except: pass
+        if transcription.text:
+            return transcription.text, "tr"
+    except Exception as api_err:
+        st.error(f"❌ OpenAI Whisper API Hatası: {str(api_err)}")
+        try: os.remove(indirilen_dosya)
         except: pass
     return None, "tr"
 
@@ -197,7 +222,6 @@ def akilli_altyazi_indirici(video_id, cerez_yolu, api_anahtari):
     except: pass
     
     if api_anahtari:
-        st.write("🔄 Klasik yöntemler engellendi. OpenAI Whisper API ile ses çözülüyor...")
         metin, dil = whisper_ile_ses_coz(safe_id, api_anahtari)
         if metin and metin.strip():
             return metin, dil
@@ -238,18 +262,3 @@ madde_limiti = st.slider("Çıkarılacak Kritik Madde Sayısı:", min_value=3, m
 sekme1, sekme2 = st.tabs(["📺 YouTube Videosu", "📝 Uzun Metin"])
 
 with sekme1:
-    video_linki = st.text_input("YouTube Linki veya Kodu Girin:", value="", placeholder="Örn: https://youtube.com...", key="yt_url_box")
-    if st.button("Videoyu Analiz Et", key="yt_btn"):
-        if not video_linki.strip():
-            st.warning("Lütfen bir YouTube linki girin.")
-        else:
-            v_id = youtube_id_bul_kesin(video_linki)
-            PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
-            CEREZ_YOLU = os.path.join(PROJE_DIZINI, "www.youtube.com_cookies.txt")
-            st.write("📥 Altyazılar sökülüyor veya ses akışı analiz ediliyor...")
-            metin, altyazi_dili = akilli_altyazi_indirici(v_id, CEREZ_YOLU, openai_key)
-            if not metin:
-                st.error("YouTube engelleri aşılamadı. Lütfen geçerli bir OpenAI API anahtarı girdiğinizden emin olun.")
-            else:
-                st.write("🤖 Yapay zeka maddeleri çıkarıyor...")
-                ham_maddeler = yerel_mantik_ozetleyici(metin, madde_sayisi=madde_limiti, dil=altyazi_dili)
